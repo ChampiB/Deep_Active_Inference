@@ -1,0 +1,17 @@
+name: "gm_${agent.n_states}"
+
+defaults:
+  - action_selection: random
+
+_target_: zoo.agents.GM.GM
+
+# Miscellaneous
+n_actions: ${environment.n_actions}
+n_states: 3
+n_observations: 2
+discount_factor: 0.95
+dataset_size: 100
+tensorboard_dir: "${tensorboard.directory}"
+checkpoint_dir: "${checkpoint.directory}"
+trainable: True
+verbose: False

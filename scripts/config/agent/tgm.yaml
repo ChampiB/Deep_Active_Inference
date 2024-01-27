@@ -1,0 +1,21 @@
+name: "tgm"
+
+defaults:
+  - action_selection: random
+
+_target_: zoo.agents.TGM.TGM
+
+# Miscellaneous
+n_actions: ${environment.n_actions}
+n_states: 10
+discount_factor: 0.95
+n_steps_between_synchro: 10000
+queue_capacity: 50000
+tensorboard_dir: "${tensorboard.directory}"
+checkpoint_dir: "${checkpoint.directory}"
+reward_coefficient: 1000
+g_value: "efe"
+efe_loss_update_encoder: False
+image_shape: ${tuple:3,64,64}
+trainable: True
+verbose: False
