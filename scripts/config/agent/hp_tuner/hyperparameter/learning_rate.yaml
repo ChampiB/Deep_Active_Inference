@@ -1,0 +1,12 @@
+learning_rate:
+
+  # The hyperparameter name
+  name: "learning_rate"
+
+  # The path leading to the hyperparameter in the hydra configuration
+  path: "agent.learning_rate"
+
+  # The search space definition for the learning rate
+  _target_: zoo.agents.tuning.search_space.LogUniform.LogUniform
+  lower_bound: 1e-4
+  upper_bound: 1e-1

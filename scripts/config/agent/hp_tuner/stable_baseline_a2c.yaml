@@ -1,0 +1,15 @@
+# The class that must be instantiated
+_target_: zoo.agents.tuning.HyperparameterTuner.HyperparameterTuner
+
+# The tuner's name and list of parameters
+name: "stable_baseline_a2c"
+hyperparameters: "${instantiate_list: ${agent.hp_tuner.hyperparameters_dict}}"
+
+# Define the hyperparameters that needs to be tuned. Note that trial_index simply repeat each configuration n times
+# to perform cross validation as suggested in https://github.com/ray-project/ray/issues/7744#issuecomment-888148735
+defaults:
+    - hyperparameter@hyperparameters_dict:
+        - learning_rate
+        - learning_starts
+        - trial_index
+    - _self_

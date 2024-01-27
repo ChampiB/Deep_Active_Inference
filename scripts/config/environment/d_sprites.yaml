@@ -1,0 +1,10 @@
+# The class that must be instantiated
+_target_: zoo.environments.SpritesEnv.SpritesEnv
+
+# The environment's parameters
+name: "d_sprites_${environment.difficulty}_repeats_${environment.repeats}"
+repeats: 5
+max_episode_length: 50
+images_archive: "${oc.env:DATA_DIRECTORY}/d_sprites_ds/d_sprites.npz"
+n_actions: 4
+difficulty: "hard" # 'easy' or 'hard'

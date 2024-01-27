@@ -1,0 +1,11 @@
+dummy_parameter:
+
+  # The hyperparameter name
+  name: "dummy_parameter"
+
+  # The path leading to the hyperparameter in the hydra configuration
+  path: "task.dummy_parameter"
+
+  # The search space definition for the dummy parameter
+  _target_: zoo.agents.tuning.search_space.Choice.Choice
+  values: [0]

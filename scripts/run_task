@@ -1,0 +1,33 @@
+#!/usr/bin/env python
+
+import logging
+from omegaconf import OmegaConf
+from zoo.helpers.Hydra import Hydra
+import hydra
+from hydra.utils import instantiate
+
+
+@hydra.main(version_base="1.3.1", config_path="config", config_name="run_task")
+def run_task(hydra_config):
+    """
+    Run the task requested by the user
+    :param hydra_config: the hydra configuration of the task
+    """
+
+    # Create the requested task.
+    task = instantiate(hydra_config.task)
+
+    # Log the hydra configuration corresponding to the task.
+    logging.info(f"Configuration:\n{OmegaConf.to_yaml(hydra_config)}")
+
+    # Run the task.
+    task.run(hydra_config)
+
+
+if __name__ == '__main__':
+
+    # Allow hydra to load custom objects such as: tuples and none values.
+    Hydra.register_resolvers()
+
+    # Run the task requested by the user.
+    run_task()

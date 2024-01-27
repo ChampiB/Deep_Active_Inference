@@ -1,0 +1,11 @@
+epsilon_end:
+
+  # The hyperparameter name
+  name: "epsilon_end"
+
+  # The path leading to the hyperparameter in the hydra configuration
+  path: "agent.action_selection.epsilon_end"
+
+  # The search space definition for the epsilon end
+  _target_: zoo.agents.tuning.search_space.Choice.Choice
+  values: [0.0, 0.05]

@@ -1,0 +1,18 @@
+# The class that must be instantiated
+_target_: zoo.tasks.DrawPerformanceGraph.DrawPerformanceGraph
+
+# The task's parameters
+name: "draw_performance_graph"
+seed: 1
+min_n_steps: 1000
+max_n_steps: 500000
+max_y_axis: 2500
+jump: 1
+task_directory: "training"
+monitored_quantity: "reward"
+agents: []
+environment_name: "${environment.name}"
+model_dirs: "${instantiate_model_dirs: ${oc.env:DATA_DIRECTORY}/${task.task_directory}/runs/${environment.name}/, ${task.agents}}"
+figure_path: "${oc.env:DATA_DIRECTORY}/${task.task_directory}/runs/${environment.name}/${task.task_directory}_${task.monitored_quantity}_${environment.name}.pdf"
+df_path_prefix: "${oc.env:DATA_DIRECTORY}/${task.task_directory}/runs/${environment.name}/${task.task_directory}_${task.monitored_quantity}_${environment.name}"
+overwrite: false

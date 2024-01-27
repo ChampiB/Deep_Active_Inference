@@ -1,0 +1,9 @@
+# The class that must be instantiated
+_target_: zoo.tasks.RunTraining.RunTraining
+
+# The task's parameters
+name: "training"
+max_n_steps: 500000
+learning_starts: 50000
+batch_size: 50
+seed: 2

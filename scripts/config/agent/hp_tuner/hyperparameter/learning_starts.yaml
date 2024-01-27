@@ -1,0 +1,11 @@
+learning_starts:
+
+  # The hyperparameter name
+  name: "learning_starts"
+
+  # The path leading to the hyperparameter in the hydra configuration
+  path: "task.learning_starts"
+
+  # The search space definition for the buffer size at which learning starts
+  _target_: zoo.agents.tuning.search_space.Choice.Choice
+  values: [1e3, 1e4, 5e4]

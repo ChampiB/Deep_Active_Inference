@@ -1,0 +1,26 @@
+name: "hmm"
+
+defaults:
+  - encoder: convolutional_64
+  - decoder: convolutional_64
+  - transition: linear_relu_3x100
+  - action_selection: random
+
+_target_: zoo.agents.HMM.HMM
+
+# Miscellaneous
+n_actions: ${environment.n_actions}
+n_states: 10
+lr: 0.0001
+queue_capacity: 50000
+tensorboard_dir: "${tensorboard.directory}"
+checkpoint_dir: "${checkpoint.directory}"
+image_shape: ${tuple:3,64,64}
+trainable: True
+verbose: False
+
+# Beta scheduling
+beta: 1.0
+beta_starting_step: 0
+beta_rate: 0.0000
+n_steps_beta_reset: 10000000000

@@ -1,0 +1,13 @@
+# The class that must be instantiated
+_target_: zoo.agents.RandomAgent.RandomAgent
+
+# The agent's hyperparameter tuning configuration
+defaults:
+  - hp_tuner: none
+
+# The agent's parameters
+name: "random_agent"
+n_actions: ${environment.n_actions}
+tensorboard_dir: "${tensorboard.directory}"
+checkpoint_dir: "${checkpoint.directory}"
+trainable: False

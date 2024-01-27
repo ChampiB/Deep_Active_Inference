@@ -1,0 +1,11 @@
+trial_index:
+
+  # The hyperparameter name
+  name: "trial_index"
+
+  # The path leading to the hyperparameter in the hydra configuration
+  path: "agent.trial_index"
+
+  # Repeat the experiment range(values) times for each configuration
+  _target_: zoo.agents.tuning.search_space.GridSearch.GridSearch
+  values: [0,1,2,3,4]

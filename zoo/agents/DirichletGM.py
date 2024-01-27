@@ -157,8 +157,8 @@ class DirichletGM(AgentInterface):
                 self.learn(config)
 
             # Save the agent (if needed).
-            # TODO  if self.steps_done % config.checkpoint.frequency == 0:
-            # TODO      self.save(config)
+            if self.steps_done % config.checkpoint.frequency == 0:
+                self.save(config)
 
             # Log the reward (if needed).
             if self.writer is not None:

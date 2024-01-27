@@ -1,0 +1,33 @@
+name: "chmm_${agent.g_value}_${agent.reward_coefficient}_${agent.action_selection.name}"
+
+defaults:
+  - encoder: convolutional_64
+  - decoder: convolutional_64
+  - transition: linear_relu_3x100
+  - critic: linear_relu_4x100
+  - action_selection: epsilon_greedy
+
+_target_: zoo.agents.CHMM.CHMM
+
+# Miscellaneous
+n_actions: ${environment.n_actions}
+n_states: 10
+vfe_lr: 0.0001
+efe_lr: 0.0001
+discount_factor: 0.95
+n_steps_between_synchro: 10000
+queue_capacity: 50000
+tensorboard_dir: "${tensorboard.directory}"
+checkpoint_dir: "${checkpoint.directory}"
+reward_coefficient: 500
+g_value: "efe"
+efe_loss_update_encoder: False
+image_shape: ${tuple:3,64,64}
+trainable: True
+verbose: False
+
+# Beta scheduling
+beta: 1.0
+beta_starting_step: 0
+beta_rate: 0.0
+n_steps_beta_reset: 10000000000

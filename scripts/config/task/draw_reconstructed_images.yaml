@@ -1,0 +1,10 @@
+# The class that must be instantiated
+_target_: zoo.tasks.DrawReconstructedImage.DrawReconstructedImage
+
+# The task's parameters
+name: "draw_reconstructed_images"
+seed: 2
+grid_size: ${tuple:6,6}
+task_directory: "training"
+figure_path: "${oc.env:DATA_DIRECTORY}/${task.task_directory}/runs/${environment.name}/reconstructed_images_${environment.name}_${agent.name}.pdf"
+task_data_directory: "${oc.env:DATA_DIRECTORY}/${task.name}/"

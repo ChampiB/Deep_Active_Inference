@@ -1,0 +1,13 @@
+# The class that must be instantiated
+_target_: zoo.tasks.DrawSelectedActions.DrawSelectedActions
+
+# The task's parameters
+name: "draw_selected_actions"
+seed: 2
+max_n_steps: 500000
+jump: 500
+csv_path: "${oc.env:DATA_DIRECTORY}/${task.task_directory}/selected_actions/${environment.name}/${agent.name}/${task.seed}/selected_actions.csv"
+figure_path: "${oc.env:DATA_DIRECTORY}/${task.task_directory}/runs/${environment.name}/selected_actions_${environment.name}_${agent.name}.pdf"
+task_directory: "training"
+task_data_directory: "${oc.env:DATA_DIRECTORY}/${task.name}/"
+action_names: ["Down", "Right", "Left", "Up"]

@@ -1,0 +1,17 @@
+# The class that must be instantiated.
+_target_: zoo.tasks.DrawVarianceDistribution.DrawVarianceDistribution
+
+# The task's parameters.
+name: "draw_variance_distribution"
+seed: 1
+task_directory: "training"
+save_path: "${oc.env:DATA_DIRECTORY}/${task.task_directory}/runs/${environment.name}/var_distribution_${task.agent_name}"
+
+# The number of samples used to estimate the CKA scores.
+n_samples: 5000
+
+# The agent's name, seed, path and tensorboard directory.
+agent_name: "chmm_efe_epsilon_greedy_0%"
+agent_seed: 3
+agent_path: "${oc.env:DATA_DIRECTORY}/${task.task_directory}/saves/${environment.name}/${task.agent_name}/${task.agent_seed}/"
+agent_tensorboard_dir: "${oc.env:DATA_DIRECTORY}/${task.task_directory}/runs/${environment.name}/${task.agent_name}/${task.agent_seed}/"

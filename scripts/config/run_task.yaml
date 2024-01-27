@@ -1,0 +1,16 @@
+# Define the agent, environment and task
+defaults:
+  - environment: maze
+  - agent: dirichlet_gm
+  - task: training
+  - _self_
+
+# Parameters related to saving and reloading the agents
+checkpoint:
+  frequency: 100000
+  directory: "${oc.env:DATA_DIRECTORY}/${task.name}/saves/${environment.name}/${agent.name}/${task.seed}/"
+
+# Parameters related to monitoring the agents and logging useful information
+tensorboard:
+  log_interval: 1
+  directory: "${oc.env:DATA_DIRECTORY}/${task.name}/runs/${environment.name}/${agent.name}/${task.seed}/"

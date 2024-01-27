@@ -1,0 +1,11 @@
+target_update_interval:
+
+  # The hyperparameter name
+  name: "target_update_interval"
+
+  # The path leading to the hyperparameter in the hydra configuration
+  path: "agent.target_update_interval"
+
+  # The search space definition for the number of steps between two synchronisation of the target and value networks
+  _target_: zoo.agents.tuning.search_space.Choice.Choice
+  values: [1e2, 1e3, 1e4]

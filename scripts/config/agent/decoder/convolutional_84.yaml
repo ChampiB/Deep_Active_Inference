@@ -1,0 +1,4 @@
+_target_: zoo.agents.networks.DecoderNetworks.ConvDecoder84
+
+image_shape: ${agent.image_shape}
+n_states: ${agent.n_states}

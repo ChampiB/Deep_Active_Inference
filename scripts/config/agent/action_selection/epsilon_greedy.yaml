@@ -1,0 +1,8 @@
+_target_: zoo.agents.actions.EpsilonGreedyActionSelection.EpsilonGreedyActionSelection
+
+name: "epsilon_greedy"
+
+# Epsilon scheduling.
+epsilon_start: 0.9
+epsilon_end: 0.05
+epsilon_decay: 100000

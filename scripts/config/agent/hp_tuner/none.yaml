@@ -1,0 +1,12 @@
+# The class that must be instantiated
+_target_: zoo.agents.tuning.HyperparameterTuner.HyperparameterTuner
+
+# The tuner's name and list of parameters
+name: "none"
+hyperparameters: "${instantiate_list: ${agent.hp_tuner.hyperparameters_dict}}"
+
+# Define the hyperparameters that needs to be tuned
+defaults:
+    - hyperparameter@hyperparameters_dict:
+        - dummy_parameter
+    - _self_

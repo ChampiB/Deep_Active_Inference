@@ -1,0 +1,21 @@
+# The class that must be instantiated
+_target_: zoo.tasks.RunHyperparameterTuning.RunHyperparameterTuning
+
+# The task's parameters
+name: "hyperparameter_tuning"
+seed: 1
+grace_period: 100000
+max_n_steps: 500000
+n_cpu: 25
+n_gpu: 0
+memory: 20
+n_hp_samples: 5
+learning_starts: 50000
+batch_size: 50
+local_directory: "${oc.env:DATA_DIRECTORY}/${task.name}/ray_tune/${environment.name}/${agent.name}/${task.seed}/"
+save_file: "parameters_${environment.name}_${agent.name}_${task.seed}.tsv"
+tensorboard_dir: "${tensorboard.directory}"
+
+# A parameter that no agent uses. It allows the hyperparameter tuning script to run without errors for agent with no
+# tunable hyperparameters. In this case, the script behaviour reduces to the standard training script.
+dummy_parameter: 0

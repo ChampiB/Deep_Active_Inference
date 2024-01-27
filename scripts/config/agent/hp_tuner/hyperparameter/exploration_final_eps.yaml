@@ -1,0 +1,11 @@
+exploration_final_eps:
+
+  # The hyperparameter name
+  name: "exploration_final_eps"
+
+  # The path leading to the hyperparameter in the hydra configuration
+  path: "agent.exploration_final_eps"
+
+  # The search space definition for stable baseline DQN's exploration final epsilon
+  _target_: zoo.agents.tuning.search_space.Choice.Choice
+  values: [0.0, 0.05]

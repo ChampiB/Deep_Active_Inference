@@ -1,0 +1,11 @@
+epsilon_decay:
+
+  # The hyperparameter name
+  name: "epsilon_decay"
+
+  # The path leading to the hyperparameter in the hydra configuration
+  path: "agent.action_selection.epsilon_decay"
+
+  # The search space definition for the epsilon decay
+  _target_: zoo.agents.tuning.search_space.Choice.Choice
+  values: [1e3, 1e4, 1e5, 1e6, 1e7]

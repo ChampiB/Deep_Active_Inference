@@ -1,0 +1,12 @@
+exploration_fraction:
+
+  # The hyperparameter name
+  name: "exploration_fraction"
+
+  # The path leading to the hyperparameter in the hydra configuration
+  path: "agent.exploration_fraction"
+
+  # The search space definition for the exploration fraction of stable baseline DQN
+  _target_: zoo.agents.tuning.search_space.LogUniform.LogUniform
+  lower_bound: 0.01
+  upper_bound: 0.3

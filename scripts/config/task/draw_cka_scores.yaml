@@ -1,0 +1,23 @@
+# The class that must be instantiated
+_target_: zoo.tasks.DrawCKAScores.DrawCKAScores
+
+# The task's parameters
+name: "draw_cka_graph"
+seed: 1
+task_directory: "training"
+save_path: "${oc.env:DATA_DIRECTORY}/${task.task_directory}/runs/${environment.name}/CKA_${task.a1_name}_${task.a2_name}"
+
+# The number of samples used to estimate the CKA scores.
+n_samples: 5000
+
+# The first agent name, seed, path and tensorboard directory.
+a1_name: "chmm_efe_epsilon_greedy_0%"
+a1_seed: 3
+a1_path: "${oc.env:DATA_DIRECTORY}/${task.task_directory}/saves/${environment.name}/${task.a1_name}/${task.a1_seed}/"
+a1_tensorboard_dir: "${oc.env:DATA_DIRECTORY}/${task.task_directory}/runs/${environment.name}/${task.a1_name}/${task.a1_seed}/"
+
+# The second agent name, seed, path and tensorboard directory.
+a2_name: "chmm_efe_epsilon_greedy_100%"
+a2_seed: 3
+a2_path: "${oc.env:DATA_DIRECTORY}/${task.task_directory}/saves/${environment.name}/${task.a2_name}/${task.a2_seed}/"
+a2_tensorboard_dir: "${oc.env:DATA_DIRECTORY}/${task.task_directory}/runs/${environment.name}/${task.a2_name}/${task.a2_seed}/"

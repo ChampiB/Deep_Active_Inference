@@ -1,0 +1,13 @@
+n_epochs:
+
+  # The hyperparameter name
+  name: "n_epochs"
+
+  # The path leading to the hyperparameter in the hydra configuration
+  path: "agent.n_epochs"
+
+  # The search space definition for the range of epoch of PPO
+  # (i.e., how long PPO should perform SGD after gathering a set of observations)
+  _target_: zoo.agents.tuning.search_space.RandInt.RandInt
+  lower_bound: 3
+  upper_bound: 30

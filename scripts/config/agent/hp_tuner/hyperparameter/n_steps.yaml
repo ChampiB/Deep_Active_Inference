@@ -1,0 +1,11 @@
+n_steps:
+
+  # The hyperparameter name
+  name: "n_steps"
+
+  # The path leading to the hyperparameter in the hydra configuration
+  path: "agent.n_steps"
+
+  # The search space definition for the horizon range of PPO (i.e., for how many steps PPO should gather trajectories)
+  _target_: zoo.agents.tuning.search_space.Choice.Choice
+  values: [64, 128, 256, 512, 1024, 2048, 4096]
