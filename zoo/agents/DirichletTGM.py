@@ -15,14 +15,14 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 
-class TGM(AgentInterface):
+class DirichletTGM(AgentInterface):
     """
     Implement a Temporal Gaussian Mixture taking random each action.
     """
 
     def __init__(
         self, name, tensorboard_dir, checkpoint_dir, action_selection, n_states, dataset_size,
-        W=None, m=None, v=None, β=None, D=None, B=None, n_observations=2, n_actions=4, steps_done=0, verbose=False,
+        W=None, m=None, v=None, β=None, d=None, b=None, n_observations=2, n_actions=4, steps_done=0, verbose=False,
         learning_step=0, **_
     ):
         """
@@ -76,8 +76,8 @@ class TGM(AgentInterface):
         self.m = [torch.zeros([n_observations]) if m is None else m[k].cpu() for k in range(n_states)]
         self.v = (n_observations - 0.99) * torch.ones([n_states]) if v is None else v.cpu()
         self.β = torch.ones([n_states]) if β is None else β.cpu()
-        self.D = torch.ones([n_states]) / n_states if D is None else D.cpu()
-        self.B = torch.ones([n_actions, n_states, n_states]) / n_states if B is None else B.cpu()
+        self.d = torch.ones([n_states]) if d is None else d.cpu()
+        self.b = torch.ones([n_actions, n_states, n_states]) * 0.2 if b is None else b.cpu()
 
         # Gaussian mixture posterior parameters.
         self.W_hat = [self.random_psd_matrix([n_observations, n_observations]) for _ in range(n_states)]
@@ -85,6 +85,8 @@ class TGM(AgentInterface):
         self.v_hat = (n_observations - 0.99) * torch.ones([n_states])
         self.β_hat = torch.ones([n_states])
         self.r_hat = [torch.softmax(torch.rand([dataset_size, n_states]), dim=1) for _ in range(2)]
+        self.d_hat = torch.ones([n_states])
+        self.b_hat = torch.ones([n_actions, n_states, n_states]) * 0.2
 
     @staticmethod
     def random_psd_matrix(shape):
@@ -156,11 +158,11 @@ class TGM(AgentInterface):
 
             # Perform one iteration of training (if needed).
             if len(self.x0) >= self.dataset_size:
-                self.learn(config)
+                self.learn(env, config)
 
             # Save the agent (if needed).
-            if self.steps_done % config.checkpoint.frequency == 0:
-                self.save(config)
+            # TODO if self.steps_done % config.checkpoint.frequency == 0:
+            # TODO     self.save(config)
 
             # Log the reward (if needed).
             if self.writer is not None:
@@ -182,9 +184,10 @@ class TGM(AgentInterface):
         # Close the environment.
         env.close()
 
-    def learn(self, config):
+    def learn(self, env, config):
         """
         Perform on step of gradient descent on the encoder and the decoder
+        :param env: the environment on which the agent is trained
         :param config: the hydra configuration
         """
 
@@ -208,20 +211,34 @@ class TGM(AgentInterface):
             self.r_hat[0] = r
 
         # Perform inference.
-        self.draw_graph(title="Before Optimization")
-        self.draw_graph(title="Before Optimization", ellipses=False)
-        for i in range(200):  # TODO implement a better stopping condition
-            self.update_for_z0()
-            self.draw_graph(title=f"[{i}] After Z0 update")
-            self.draw_graph(title=f"[{i}] After Z0 update", ellipses=False)
-            self.update_for_z1()
-            self.draw_graph(title=f"[{i}] After Z1 update")
-            self.draw_graph(title=f"[{i}] After Z1 update", ellipses=False)
+        self.draw_graphs(env.action_names, title="Before Optimization")
+        self.draw_graphs(env.action_names, title="Before Optimization", ellipses=False)
+        self.responsibility_histograms(title="Before Optimization")
+        for i in range(20):  # TODO implement a better stopping condition
+            self.update_for_d()
+            # TODO self.draw_graph(env.action_names, title=f"[{i}] After D update")
+            # TODO self.draw_graph(env.action_names, title=f"[{i}] After D update", ellipses=False)
+            # TODO self.responsibility_histograms(title=f"[{i}] After D update")
+            self.update_for_b()
+            log_B_hat = self.expected_log_B()
+            # TODO self.draw_graph(env.action_names, title=f"[{i}] After B update")
+            # TODO self.draw_graph(env.action_names, title=f"[{i}] After B update", ellipses=False)
+            # TODO self.responsibility_histograms(title=f"[{i}] After B update")
+            self.update_for_z0(log_B_hat)
+            # TODO self.draw_graph(env.action_names, title=f"[{i}] After Z0 update")
+            # TODO self.draw_graph(env.action_names, title=f"[{i}] After Z0 update", ellipses=False)
+            # TODO self.responsibility_histograms(title=f"[{i}] After Z0 update")
+            self.update_for_z1(log_B_hat)
+            # TODO self.draw_graph(env.action_names, title=f"[{i}] After Z1 update")
+            # TODO self.draw_graph(env.action_names, title=f"[{i}] After Z1 update", ellipses=False)
+            # TODO self.responsibility_histograms(title=f"[{i}] After Z1 update")
             self.update_for_μ_and_Λ()
-            self.draw_graph(title=f"[{i}] After μ and Λ update")
-            self.draw_graph(title=f"[{i}] After μ and Λ update", ellipses=False)
-        self.draw_graph(title="After Optimization")
-        self.draw_graph(title="After Optimization", ellipses=False)
+            # TODO self.draw_graph(env.action_names, title=f"[{i}] After μ and Λ update")
+            # TODO self.draw_graph(env.action_names, title=f"[{i}] After μ and Λ update", ellipses=False)
+            # TODO self.responsibility_histograms(title=f"[{i}] After μ and Λ update")
+        self.draw_graphs(env.action_names, title="After Optimization")
+        self.draw_graphs(env.action_names, title="After Optimization", ellipses=False)
+        self.responsibility_histograms(title="After Optimization")
 
         # Perform empirical Bayes.
         self.W = self.W_hat
@@ -235,14 +252,33 @@ class TGM(AgentInterface):
         self.a0.clear()
         self.learning_step += 1
 
-    def draw_graph(self, title="", data=True, ellipses=True, r0=None, r1=None, μ0=None, μ1=None):
+    def responsibility_histograms(self, title=""):
+
+        # Create the subplot.
+        f, axes = plt.subplots(nrows=1, ncols=2)
+
+        # Draw a bar plot representing how many point are attributed to each component.
+        for t in range(2):
+            x = [state for state in range(self.n_states)]
+            y = self.r_hat[t].sum(dim=0).tolist()
+            bars = axes[t].bar(x, y, align='center')
+            for state in range(self.n_states):
+                bars[state].set_color(self.colors[state])
+                bars[state].set_alpha(0.53)
+
+        f.suptitle(title)
+        mng = plt.get_current_fig_manager()
+        mng.resize(*mng.window.maxsize())
+        plt.show()
+
+    def draw_graphs(self, action_names, title="", data=True, ellipses=True, r0=None, r1=None, μ0=None, μ1=None):
 
         # Create the subplots.
         f, axes = plt.subplots(nrows=1 + math.ceil(self.n_actions / 2.0), ncols=2)
         axes[0][0].set_title("Observation at t = 0")
         axes[0][1].set_title("Observation at t = 1")
-        for action in range(self.n_actions):
-            axes[1 + int(action / 2)][action % 2].set_title(f"Transition for action = {action}")
+        for i, action in enumerate(action_names):
+            axes[1 + int(i / 2)][i % 2].set_title(f"Transition for action = {action}")
 
         # Draw the data points.
         if data is True:
@@ -345,10 +381,17 @@ class TGM(AgentInterface):
             axis.add_artist(ell)
             axis.set_aspect('equal', 'datalim')
 
-    def update_for_z0(self):
+    def update_for_d(self):
+        self.d_hat = self.d + self.r_hat[0].sum(dim=0)
+
+    def update_for_b(self):
+        a = torch.nn.functional.one_hot(torch.tensor(self.a0))
+        self.b_hat = self.b + torch.einsum("na, nj, nk -> ajk", a, self.r_hat[1], self.r_hat[0])
+
+    def update_for_z0(self, log_B_hat):
         # Compute the non-normalized state probabilities.
-        log_D = self.repeat_across_data_points(torch.log(self.D))
-        log_B = self.expected_log_Bk()
+        log_D = self.repeat_across_data_points(self.expected_log_D())
+        log_B = self.expected_log_Bk(log_B_hat)
         log_det = self.repeat_across_data_points(self.expected_log_determinant())
         quadratic_form = self.expected_quadratic_form(t=0)
         log_ρ = torch.zeros([self.dataset_size, self.n_states])
@@ -357,12 +400,20 @@ class TGM(AgentInterface):
         # Normalize the state probabilities.
         self.r_hat[0] = torch.softmax(log_ρ, dim=1)
 
-    def expected_log_Bk(self):
+    def expected_log_D(self):
+        sum_d = self.d.sum()
+        return torch.digamma(self.d) - torch.digamma(sum_d)
+
+    def expected_log_B(self):
+        digamma_sum_b = torch.digamma(self.b.sum(dim=1)).unsqueeze(dim=1).repeat(1, self.n_states, 1)
+        return torch.digamma(self.b) - digamma_sum_b
+
+    def expected_log_Bk(self, log_B_hat):
         log_B = torch.zeros([self.dataset_size, self.n_states])
         for n in range(self.dataset_size):
             for k in range(self.n_states):
                 log_B[n][k] = sum(
-                    [self.r_hat[1][n][j] * torch.log(self.B[self.a0[n]])[j][k] for j in range(self.n_states)]
+                    [self.r_hat[1][n][j] * log_B_hat[self.a0[n]][j][k] for j in range(self.n_states)]
                 )
         return log_B
 
@@ -382,9 +433,9 @@ class TGM(AgentInterface):
                 quadratic_form[n][k] += self.v_hat[k] * torch.matmul(torch.matmul(x.t(), self.W_hat[k]), x)
         return quadratic_form
 
-    def update_for_z1(self):
+    def update_for_z1(self, log_B_hat):
         # Compute the non-normalized state probabilities.
-        log_B = self.expected_log_Bj()
+        log_B = self.expected_log_Bj(log_B_hat)
         log_det = self.repeat_across_data_points(self.expected_log_determinant())
         quadratic_form = self.expected_quadratic_form(t=1)
         log_ρ = torch.zeros([self.dataset_size, self.n_states])
@@ -393,12 +444,12 @@ class TGM(AgentInterface):
         # Normalize the state probabilities.
         self.r_hat[1] = torch.softmax(log_ρ, dim=1)
 
-    def expected_log_Bj(self):
+    def expected_log_Bj(self, log_B_hat):
         log_B = torch.zeros([self.dataset_size, self.n_states])
         for n in range(self.dataset_size):
             for j in range(self.n_states):
                 log_B[n][j] = sum(
-                    [self.r_hat[0][n][j] * torch.log(self.B[self.a0[n]])[j][k] for k in range(self.n_states)]
+                    [self.r_hat[0][n][j] * log_B_hat[self.a0[n]][j][k] for k in range(self.n_states)]
                 )
         return log_B
 
@@ -468,8 +519,8 @@ class TGM(AgentInterface):
             "v": self.v,
             "m": self.m,
             "β": self.β,
-            "D": self.D,
-            "B": self.B,
+            "d": self.d,
+            "b": self.b,
             "learning_step": self.learning_step
         }, checkpoint_file)
 
@@ -496,8 +547,8 @@ class TGM(AgentInterface):
             "v": checkpoint["v"],
             "m": checkpoint["m"],
             "β": checkpoint["β"],
-            "D": checkpoint["D"],
-            "B": checkpoint["B"],
+            "d": checkpoint["d"],
+            "b": checkpoint["b"],
             "learning_step": checkpoint["learning_step"]
         }
 

@@ -4,8 +4,10 @@ import gym
 from gym import spaces
 import torch
 
+from zoo.environments.EnvInterface import EnvInterface
 
-class MazeEnv(gym.Env):
+
+class MazeEnv(EnvInterface):
     """
     A class containing the code of the maze environment.
     """
@@ -83,6 +85,14 @@ class MazeEnv(gym.Env):
         self.last_r = 0
         self.state = copy.deepcopy(self.initial_state)
         return self.get_state()
+
+    @property
+    def action_names(self):
+        """
+        Getter
+        :return: the list of action names
+        """
+        return ["Down", "Up", "Left", "Right"]
 
     def step(self, action):
         """

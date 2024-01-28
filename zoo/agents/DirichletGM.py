@@ -248,11 +248,10 @@ class DirichletGM(AgentInterface):
         plt.title(title)
         plt.show()
 
-    def make_ellipses(self, threshold=0.95):
-        r_hat = self.r_hat.sum(dim=0)
-        print(r_hat)
+    def make_ellipses(self):
+        active_components = set(self.r_hat.argmax(dim=1).tolist())
         for k in range(self.n_states):
-            if r_hat[k] < threshold:
+            if k not in active_components:
                 continue
             color = self.colors[k]
             covariances = torch.inverse(self.v_hat[k] * self.W_hat[k])

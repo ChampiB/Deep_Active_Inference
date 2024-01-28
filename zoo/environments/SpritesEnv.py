@@ -1,13 +1,14 @@
 import numpy as np
-import gym
 from gym import spaces
+
+from zoo.environments.EnvInterface import EnvInterface
 from zoo.helpers.Device import Device
 from zoo.helpers.SpritesDataset import DataSet
 import torch.nn.functional as func
 import torch
 
 
-class SpritesEnv(gym.Env):
+class SpritesEnv(EnvInterface):
     """
     A class containing the code of the dSprites environment adapted from:
     https://github.com/zfountas/deep-active-inference-mc/blob/master/src/game_environment.py
@@ -141,7 +142,15 @@ class SpritesEnv(gym.Env):
         self.state = np.zeros(self.s_dim, dtype=self.np_precision)
         for s_i, s_size in enumerate(self.s_sizes):
             self.state[s_i] = np.random.randint(s_size)
- 
+
+    @property
+    def action_names(self):
+        """
+        Getter
+        :return: the list of action names
+        """
+        return ["Down", "Up", "Left", "Right"]
+
     #
     # Actions
     #
