@@ -3,7 +3,7 @@ _target_: zoo.environments.MazeEnv.MazeEnv
 
 # The environment's parameters
 name: "maze_${environment.maze_index}"
-maze_index: 8
+maze_index: 5
 max_episode_length: 50
 maze_path: "${oc.env:DATA_DIRECTORY}/mazes/maze_${environment.maze_index}.txt"
 n_actions: 4

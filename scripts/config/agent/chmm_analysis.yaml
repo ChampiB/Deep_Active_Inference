@@ -20,8 +20,8 @@ queue_capacity: 50000
 tensorboard_dir: "${tensorboard.directory}"
 checkpoint_dir: "${checkpoint.directory}"
 task_dir: "${oc.env:DATA_DIRECTORY}/${task.name}/[[DIRECTORY]]/${environment.name}/${agent.name}/${task.seed}/"
-reward_coefficient: 500
-g_value: "old_efe"
+reward_coefficient: 1
+g_value: "reward"
 efe_loss_update_encoder: False
 image_shape: ${tuple:3,64,64}
 trainable: True

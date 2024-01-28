@@ -17,7 +17,7 @@ class GM(AgentInterface):
     """
 
     def __init__(
-        self, name, discount_factor, tensorboard_dir, checkpoint_dir, action_selection, n_states, dataset_size,
+        self, name, tensorboard_dir, checkpoint_dir, action_selection, n_states, dataset_size,
         W=None, m=None, v=None, β=None, D=None, n_observations=2, n_actions=4, steps_done=0, verbose=False,
         learning_step=0, **_
     ):
@@ -48,7 +48,6 @@ class GM(AgentInterface):
         # Miscellaneous.
         self.agent_name = name
         self.total_rewards = 0.0
-        self.discount_factor = discount_factor
         self.dataset_size = dataset_size
         self.steps_done = steps_done
         self.tensorboard_dir = tensorboard_dir
@@ -67,17 +66,17 @@ class GM(AgentInterface):
         self.x = []
 
         # Gaussian mixture prior parameters.
-        self.W = [self.random_psd_matrix([n_observations, n_observations]) for _ in range(n_states)] if W is None else W
-        self.m = [torch.zeros([n_observations]) for _ in range(n_states)] if m is None else m
-        self.v = (n_observations - 0.99) * torch.ones([n_states]) if v is None else v
-        self.β = torch.ones([n_states]) if β is None else β
-        self.D = torch.ones([n_states]) / n_states if D is None else D
+        self.W = [self.random_psd_matrix([n_observations, n_observations]) if W is None else W[k].cpu() for k in range(n_states)]
+        self.m = [torch.zeros([n_observations]) if m is None else m[k].cpu() for k in range(n_states)]
+        self.v = (n_observations - 0.99) * torch.ones([n_states]) if v is None else v.cpu()
+        self.β = torch.ones([n_states]) if β is None else β.cpu()
+        self.D = torch.ones([n_states]) / n_states if D is None else D.cpu()
 
         # Gaussian mixture posterior parameters.
         self.W_hat = [self.random_psd_matrix([n_observations, n_observations]) for _ in range(n_states)]
         self.m_hat = [torch.ones([n_observations]) for _ in range(n_states)]
         self.v_hat = (n_observations - 0.99) * torch.ones([n_states])
-        self.β_hat = torch.abs(torch.rand([n_states]))
+        self.β_hat = torch.ones([n_states])
         self.r_hat = torch.softmax(torch.rand([dataset_size, n_states]), dim=1)
 
     @staticmethod
@@ -339,7 +338,6 @@ class GM(AgentInterface):
             "dataset_size": self.dataset_size,
             "n_actions": self.n_actions,
             "steps_done": self.steps_done,
-            "discount_factor": self.discount_factor,
             "tensorboard_dir": self.tensorboard_dir,
             "checkpoint_dir": self.checkpoint_dir,
             "action_selection": dict(self.action_selection),
@@ -364,7 +362,6 @@ class GM(AgentInterface):
             "name": checkpoint["name"],
             "action_selection": Checkpoint.load_object_from_dictionary(checkpoint, "action_selection"),
             "dataset_size": checkpoint["dataset_size"],
-            "discount_factor": checkpoint["discount_factor"],
             "tensorboard_dir": tb_dir,
             "checkpoint_dir": checkpoint["checkpoint_dir"],
             "steps_done": checkpoint["steps_done"],

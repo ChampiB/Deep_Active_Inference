@@ -18,7 +18,7 @@ class DirichletGM(AgentInterface):
     """
 
     def __init__(
-        self, name, discount_factor, tensorboard_dir, checkpoint_dir, action_selection, n_states, dataset_size,
+        self, name, tensorboard_dir, checkpoint_dir, action_selection, n_states, dataset_size,
         W=None, m=None, v=None, β=None, d=None, n_observations=2, n_actions=4, steps_done=0, verbose=False,
         learning_step=0, **_
     ):
@@ -29,7 +29,6 @@ class DirichletGM(AgentInterface):
         :param n_actions: the number of actions
         :param n_states: the number of latent states, i.e., number of components in the mixture
         :param n_observations: the number of observations
-        :param discount_factor: the factor by which the future EFE is discounted
         :param dataset_size: the size of the dataset
         :param tensorboard_dir: the directory in which tensorboard's files will be written
         :param checkpoint_dir: the directory in which the agent should be saved
@@ -49,7 +48,6 @@ class DirichletGM(AgentInterface):
         # Miscellaneous.
         self.agent_name = name
         self.total_rewards = 0.0
-        self.discount_factor = discount_factor
         self.dataset_size = dataset_size
         self.steps_done = steps_done
         self.tensorboard_dir = tensorboard_dir
@@ -360,7 +358,6 @@ class DirichletGM(AgentInterface):
             "dataset_size": self.dataset_size,
             "n_actions": self.n_actions,
             "steps_done": self.steps_done,
-            "discount_factor": self.discount_factor,
             "tensorboard_dir": self.tensorboard_dir,
             "checkpoint_dir": self.checkpoint_dir,
             "action_selection": dict(self.action_selection),
@@ -385,7 +382,6 @@ class DirichletGM(AgentInterface):
             "name": checkpoint["name"],
             "action_selection": Checkpoint.load_object_from_dictionary(checkpoint, "action_selection"),
             "dataset_size": checkpoint["dataset_size"],
-            "discount_factor": checkpoint["discount_factor"],
             "tensorboard_dir": tb_dir,
             "checkpoint_dir": checkpoint["checkpoint_dir"],
             "steps_done": checkpoint["steps_done"],

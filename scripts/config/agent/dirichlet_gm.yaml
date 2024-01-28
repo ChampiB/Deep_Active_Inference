@@ -7,9 +7,8 @@ _target_: zoo.agents.DirichletGM.DirichletGM
 
 # Miscellaneous
 n_actions: ${environment.n_actions}
-n_states: 14
+n_states: 10
 n_observations: 2
-discount_factor: 0.95
 dataset_size: 500
 tensorboard_dir: "${tensorboard.directory}"
 checkpoint_dir: "${checkpoint.directory}"
