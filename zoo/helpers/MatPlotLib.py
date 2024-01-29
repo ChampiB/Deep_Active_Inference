@@ -72,7 +72,7 @@ class MatPlotLib:
         plots.show()
 
     @staticmethod
-    def draw_tgm_graph(action_names, params, x0, x1, a0, r, title="", clusters=False, ellipses=False):
+    def draw_tgm_graph(action_names, params, x0, x1, a0, r, title="", clusters=False, ellipses=True):
         """
         Draw the Temporal Gaussian Mixture graph
         :param action_names: name of all the environment's actions

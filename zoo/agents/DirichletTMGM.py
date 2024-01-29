@@ -6,15 +6,12 @@ from datetime import datetime
 import torch
 import logging
 from zoo.helpers.GaussianMixture import GaussianMixture
-import matplotlib.pyplot as plt
-
 from zoo.helpers.MatPlotLib import MatPlotLib
-from zoo.helpers.PlotsBuilder import PlotsBuilder
 
 
-class DirichletTGM(AgentInterface):
+class DirichletTMGM(AgentInterface):
     """
-    Implement a Temporal Gaussian Mixture taking random each action.
+    Implement a Temporal Model with Gaussian Mixture likelihood taking random each action.
     """
 
     def __init__(
@@ -207,16 +204,15 @@ class DirichletTGM(AgentInterface):
 
             # Perform the update for the latent variable B, and display the model's beliefs (if needed).
             self.update_for_b()
-            log_B_hat = GaussianMixture.expected_log_B(self.b)
             if verbose is True:
                 self.draw_beliefs_graphs(env.action_names, f"[{i}] After B update")
 
             # Perform the update for the latent variable Z0, and display the model's beliefs (if needed).
-            self.update_for_z0(log_B_hat)
+            self.update_for_z0()
             if verbose is True:
                 self.draw_beliefs_graphs(env.action_names, f"[{i}] After Z0 update")
 
-            self.update_for_z1(log_B_hat)
+            self.update_for_z1()
             if verbose is True:
                 self.draw_beliefs_graphs(env.action_names, f"[{i}] After Z1 update")
 
@@ -251,41 +247,32 @@ class DirichletTGM(AgentInterface):
         )
 
     def update_for_d(self):
-        self.d_hat = self.d + self.r_hat[0].sum(dim=0)
+        self.d_hat = self.d + self.r_hat[0].sum(dim=0) + self.r_hat[1].sum(dim=0)
 
     def update_for_b(self):
         a = torch.nn.functional.one_hot(torch.tensor(self.a0))
         self.b_hat = self.b + torch.einsum("na, nj, nk -> ajk", a, self.r_hat[1], self.r_hat[0])
 
-    def update_for_z0(self, log_B_hat):
+    def update_for_z0(self):
 
         # Compute the non-normalized state probabilities.
         log_D = GaussianMixture.expected_log_D(self.d, self.dataset_size)
-        log_B = self.expected_log_Bk(log_B_hat)
         log_det = GaussianMixture.expected_log_det_Λ(self.v_hat, self.W_hat, self.dataset_size)
         quadratic_form = GaussianMixture.expected_quadratic_form(self.x0, self.m_hat, self.β_hat, self.v_hat, self.W_hat)
         log_ρ = torch.zeros([self.dataset_size, self.n_states])
-        log_ρ += log_D + log_B + - self.n_states / 2 * math.log(2 * math.pi) + 0.5 * log_det - 0.5 * quadratic_form
+        log_ρ += log_D - self.n_states / 2 * math.log(2 * math.pi) + 0.5 * log_det - 0.5 * quadratic_form
 
         # Normalize the state probabilities.
         self.r_hat[0] = torch.softmax(log_ρ, dim=1)
 
-    def expected_log_Bk(self, log_B_hat):
-        log_B = torch.zeros([self.dataset_size, self.n_states])
-        for n in range(self.dataset_size):
-            for k in range(self.n_states):
-                log_B[n][k] = sum(
-                    [self.r_hat[1][n][j] * log_B_hat[self.a0[n]][j][k] for j in range(self.n_states)]
-                )
-        return log_B
+    def update_for_z1(self):
 
-    def update_for_z1(self, log_B_hat):
         # Compute the non-normalized state probabilities.
-        log_B = self.expected_log_Bj(log_B_hat)
+        log_D = GaussianMixture.expected_log_D(self.d, self.dataset_size)
         log_det = GaussianMixture.expected_log_det_Λ(self.v_hat, self.W_hat, self.dataset_size)
         quadratic_form = GaussianMixture.expected_quadratic_form(self.x1, self.m_hat, self.β_hat, self.v_hat, self.W_hat)
         log_ρ = torch.zeros([self.dataset_size, self.n_states])
-        log_ρ += log_B - self.n_states / 2 * math.log(2 * math.pi) + 0.5 * log_det - 0.5 * quadratic_form
+        log_ρ += log_D - self.n_states / 2 * math.log(2 * math.pi) + 0.5 * log_det - 0.5 * quadratic_form
 
         # Normalize the state probabilities.
         self.r_hat[1] = torch.softmax(log_ρ, dim=1)
