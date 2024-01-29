@@ -1,18 +1,15 @@
-from matplotlib import colors
-import matplotlib.image as mpimg
-from io import BytesIO
-import matplotlib as mpl
 import math
 from os.path import join
-import pydot
 from zoo.agents.AgentInterface import AgentInterface
 from zoo.agents.save.Checkpoint import Checkpoint
 from datetime import datetime
 import torch
 import logging
-from zoo.helpers.KMeans import KMeans
+from zoo.helpers.GaussianMixture import GaussianMixture
 import matplotlib.pyplot as plt
-import numpy as np
+
+from zoo.helpers.MatPlotLib import MatPlotLib
+from zoo.helpers.PlotsBuilder import PlotsBuilder
 
 
 class DirichletTGM(AgentInterface):
@@ -72,7 +69,7 @@ class DirichletTGM(AgentInterface):
         self.a0 = []
 
         # Gaussian mixture prior parameters.
-        self.W = [self.random_psd_matrix([n_observations, n_observations]) if W is None else W[k].cpu() for k in range(n_states)]
+        self.W = [torch.ones([n_observations, n_observations]) if W is None else W[k].cpu() for k in range(n_states)]
         self.m = [torch.zeros([n_observations]) if m is None else m[k].cpu() for k in range(n_states)]
         self.v = (n_observations - 0.99) * torch.ones([n_states]) if v is None else v.cpu()
         self.β = torch.ones([n_states]) if β is None else β.cpu()
@@ -80,24 +77,13 @@ class DirichletTGM(AgentInterface):
         self.b = torch.ones([n_actions, n_states, n_states]) * 0.2 if b is None else b.cpu()
 
         # Gaussian mixture posterior parameters.
-        self.W_hat = [self.random_psd_matrix([n_observations, n_observations]) for _ in range(n_states)]
+        self.W_hat = [torch.ones([n_observations, n_observations]) for _ in range(n_states)]
         self.m_hat = [torch.ones([n_observations]) for _ in range(n_states)]
         self.v_hat = (n_observations - 0.99) * torch.ones([n_states])
         self.β_hat = torch.ones([n_states])
         self.r_hat = [torch.softmax(torch.rand([dataset_size, n_states]), dim=1) for _ in range(2)]
         self.d_hat = torch.ones([n_states])
         self.b_hat = torch.ones([n_actions, n_states, n_states]) * 0.2
-
-    @staticmethod
-    def random_psd_matrix(shape):
-        """
-        Generate a random positive semi-definite matrix
-        :param shape: the matrix shape
-        :return: the matrix
-        """
-        a = torch.rand(shape)
-        a = torch.abs(a + a.t())
-        return torch.matmul(a, a.t())
 
     def name(self):
         """
@@ -184,61 +170,63 @@ class DirichletTGM(AgentInterface):
         # Close the environment.
         env.close()
 
-    def learn(self, env, config):
+    def learn(self, env, config, debug=True, verbose=False):
         """
         Perform on step of gradient descent on the encoder and the decoder
         :param env: the environment on which the agent is trained
         :param config: the hydra configuration
+        :param debug: whether to display debug information
+        :param verbose: whether to display detailed debug information
         """
 
         if self.learning_step == 0:
 
-            # Perform K-means to initialize the parameter of the posterior over latent variables at time step 1.
-            μ, r = KMeans.run(self.x1, self.n_states)
-            # TODO self.draw_graph(title="After K-means Optimization", ellipses=False, r=r, μ=μ)
-            self.m = μ
-            self.m_hat = μ
-            self.r_hat[1] = r
+            # Initialize the parameter of the Gaussian Mixture using the K-means algorithm.
+            self.m, self.m_hat, self.r_hat[1], self.W_hat, self.W, self.r_hat[0] = \
+                GaussianMixture.k_means_init([self.x0, self.x1], self.v, self.v_hat)
 
-            # Estimate the covariance of the clusters and use it to initialize the Wishart prior and posterior.
-            precision = KMeans.precision(self.x1, r)
-            self.W_hat = [precision[k] / self.v_hat[k] for k in range(self.n_states)]
-            self.W = [precision[k] / self.v[k] for k in range(self.n_states)]
+            # Display the result of the k-means algorithm, if needed.
+            if verbose is True:
+                MatPlotLib.draw_tgm_graph(
+                    action_names=env.action_names, title="After K-means Optimization",
+                    params=(self.m_hat, self.v_hat, self.W_hat), x0=self.x0, x1=self.x1, a0=self.a0, r=self.r_hat,
+                    ellipses=False, clusters=True
+                )
 
-            # Perform K-means to initialize means of prior and posterior distributions at time step 0.
-            r = KMeans.update_responsibilities(self.x0, μ)
-            # TODO self.draw_graph(title="After K-means Optimization", ellipses=False, r=r, μ=μ)
-            self.r_hat[0] = r
+        # Display the model's beliefs, if needed.
+        if debug is True or verbose is True:
+            self.draw_beliefs_graphs(env.action_names, "Before Optimization")
 
         # Perform inference.
-        self.draw_graphs(env.action_names, title="Before Optimization")
-        self.draw_graphs(env.action_names, title="Before Optimization", ellipses=False)
-        self.responsibility_histograms(title="Before Optimization")
         for i in range(20):  # TODO implement a better stopping condition
+
+            # Perform the update for the latent variable D, and display the model's beliefs (if needed).
             self.update_for_d()
-            # TODO self.draw_graph(env.action_names, title=f"[{i}] After D update")
-            # TODO self.draw_graph(env.action_names, title=f"[{i}] After D update", ellipses=False)
-            # TODO self.responsibility_histograms(title=f"[{i}] After D update")
+            if verbose is True:
+                self.draw_beliefs_graphs(env.action_names, f"[{i}] After D update")
+
+            # Perform the update for the latent variable B, and display the model's beliefs (if needed).
             self.update_for_b()
-            log_B_hat = self.expected_log_B()
-            # TODO self.draw_graph(env.action_names, title=f"[{i}] After B update")
-            # TODO self.draw_graph(env.action_names, title=f"[{i}] After B update", ellipses=False)
-            # TODO self.responsibility_histograms(title=f"[{i}] After B update")
+            log_B_hat = GaussianMixture.expected_log_B(self.b)
+            if verbose is True:
+                self.draw_beliefs_graphs(env.action_names, f"[{i}] After B update")
+
+            # Perform the update for the latent variable Z0, and display the model's beliefs (if needed).
             self.update_for_z0(log_B_hat)
-            # TODO self.draw_graph(env.action_names, title=f"[{i}] After Z0 update")
-            # TODO self.draw_graph(env.action_names, title=f"[{i}] After Z0 update", ellipses=False)
-            # TODO self.responsibility_histograms(title=f"[{i}] After Z0 update")
+            if verbose is True:
+                self.draw_beliefs_graphs(env.action_names, f"[{i}] After Z0 update")
+
             self.update_for_z1(log_B_hat)
-            # TODO self.draw_graph(env.action_names, title=f"[{i}] After Z1 update")
-            # TODO self.draw_graph(env.action_names, title=f"[{i}] After Z1 update", ellipses=False)
-            # TODO self.responsibility_histograms(title=f"[{i}] After Z1 update")
+            if verbose is True:
+                self.draw_beliefs_graphs(env.action_names, f"[{i}] After Z1 update")
+
             self.update_for_μ_and_Λ()
-            # TODO self.draw_graph(env.action_names, title=f"[{i}] After μ and Λ update")
-            # TODO self.draw_graph(env.action_names, title=f"[{i}] After μ and Λ update", ellipses=False)
-            # TODO self.responsibility_histograms(title=f"[{i}] After μ and Λ update")
-        self.draw_graphs(env.action_names, title="After Optimization")
-        self.draw_graphs(env.action_names, title="After Optimization", ellipses=False)
-        self.responsibility_histograms(title="After Optimization")
+            if verbose is True:
+                self.draw_beliefs_graphs(env.action_names, f"[{i}] After μ and Λ update")
+
+        # Display the model's beliefs, if needed.
+        if debug is True or verbose is True:
+            self.draw_beliefs_graphs(env.action_names, "After Optimization")
 
         # Perform empirical Bayes.
         self.W = self.W_hat
@@ -252,134 +240,15 @@ class DirichletTGM(AgentInterface):
         self.a0.clear()
         self.learning_step += 1
 
-    def responsibility_histograms(self, title=""):
-
-        # Create the subplot.
-        f, axes = plt.subplots(nrows=1, ncols=2)
-
-        # Draw a bar plot representing how many point are attributed to each component.
-        for t in range(2):
-            x = [state for state in range(self.n_states)]
-            y = self.r_hat[t].sum(dim=0).tolist()
-            bars = axes[t].bar(x, y, align='center')
-            for state in range(self.n_states):
-                bars[state].set_color(self.colors[state])
-                bars[state].set_alpha(0.53)
-
-        f.suptitle(title)
-        mng = plt.get_current_fig_manager()
-        mng.resize(*mng.window.maxsize())
-        plt.show()
-
-    def draw_graphs(self, action_names, title="", data=True, ellipses=True, r0=None, r1=None, μ0=None, μ1=None):
-
-        # Create the subplots.
-        f, axes = plt.subplots(nrows=1 + math.ceil(self.n_actions / 2.0), ncols=2)
-        axes[0][0].set_title("Observation at t = 0")
-        axes[0][1].set_title("Observation at t = 1")
-        for i, action in enumerate(action_names):
-            axes[1 + int(i / 2)][i % 2].set_title(f"Transition for action = {action}")
-
-        # Draw the data points.
-        if data is True:
-
-            # Draw the data points of t = 0.
-            if r0 is None:
-                r0 = self.r_hat[0]
-            x = [x_tensor[0] for x_tensor in self.x0]
-            y = [x_tensor[1] for x_tensor in self.x0]
-
-            c = [tuple(r) for r in r0] if r0.shape[1] == 3 else [self.colors[torch.argmax(r)] for r in r0]
-            axes[0][0].scatter(x=x, y=y, c=c)
-
-            # Draw the data points of t = 0.
-            if r1 is None:
-                r1 = self.r_hat[1]
-            x = [x_tensor[0] for x_tensor in self.x1]
-            y = [x_tensor[1] for x_tensor in self.x1]
-
-            c = [tuple(r) for r in r1] if r1.shape[1] == 3 else [self.colors[torch.argmax(r)] for r in r1]
-            axes[0][1].scatter(x=x, y=y, c=c)
-
-        # Draw the ellipses corresponding to the current model believes.
-        if ellipses is True:
-            self.make_ellipses(axes[0][0], set(self.r_hat[0].argmax(dim=1).tolist()))
-            self.make_ellipses(axes[0][1], set(self.r_hat[1].argmax(dim=1).tolist()))
-
-        # Draw the cluster center.
-        if μ0 is not None:
-            x = [μ_k[0] for μ_k in μ0]
-            y = [μ_k[1] for μ_k in μ0]
-            axes[0][0].scatter(x=x, y=y, marker="X")
-        if μ1 is not None:
-            x = [μ_k[0] for μ_k in μ1]
-            y = [μ_k[1] for μ_k in μ1]
-            axes[0][1].scatter(x=x, y=y, marker="X")
-
-        # Display the graph corresponding to each action.
-        for action in range(self.n_actions):
-            axis = axes[1 + int(action / 2)][action % 2]
-            self.draw_transition_graph(axis, action)
-
-        f.suptitle(title)
-        mng = plt.get_current_fig_manager()
-        mng.resize(*mng.window.maxsize())
-        plt.show()
-
-    def draw_transition_graph(self, axis, action):
-
-        # Create the graph.
-        graph = pydot.Dot()
-        for state in range(self.n_states):
-            color = colors.to_rgba(self.colors[state])
-            color = [hex(int(c * 255)).replace("0x", "") for c in list(color)[0:3]]
-            color = [c if len(c) == 2 else c + c for c in list(color)[0:3]]
-            color = f"#{''.join(color)}88"
-            graph.add_node(pydot.Node(state, label=str(state), style="filled", color=color))
-
-        # Create the adjacency matrix.
-        states = [
-            [torch.argmax(self.r_hat[0][n]), torch.argmax(self.r_hat[1][n])]
-            for n in range(self.dataset_size) if self.a0[n] == action
-        ]
-        adjacency_matrix = torch.zeros([self.n_states, self.n_states])
-        for z0, z1 in states:
-            adjacency_matrix[z0][z1] += 1
-
-        # Add the edges to the graph and create the graph label.
-        sum_columns = adjacency_matrix.sum(dim=1)
-        for z0 in range(self.n_states):
-            for z1 in range(self.n_states):
-                if adjacency_matrix[z0][z1] != 0:
-                    label = round(float(adjacency_matrix[z0][z1] / sum_columns[z0]), 2)
-                    graph.add_edge(pydot.Edge(z0, z1, label=label))
-
-        # Draw the graph.
-        png_img = graph.create_png()
-        sio = BytesIO()
-        sio.write(png_img)
-        sio.seek(0)
-        img = mpimg.imread(sio)
-        axis.imshow(img)
-
-    def make_ellipses(self, axis, active_components):
-        for k in range(self.n_states):
-            if k not in active_components:
-                continue
-            color = self.colors[k]
-            covariances = torch.inverse(self.v_hat[k] * self.W_hat[k])
-            v, w = np.linalg.eigh(covariances)
-            u = w[0] / np.linalg.norm(w[0])
-            angle = np.arctan2(u[1], u[0])
-            angle = 180 * angle / np.pi  # convert to degrees
-            v = 3. * np.sqrt(2.) * np.sqrt(v)
-            mean = self.m_hat[k]
-            mean = mean.reshape(2, 1)
-            ell = mpl.patches.Ellipse(mean, v[0], v[1], 180 + angle, color=color)
-            ell.set_clip_box(axis.bbox)
-            ell.set_alpha(0.5)
-            axis.add_artist(ell)
-            axis.set_aspect('equal', 'datalim')
+    def draw_beliefs_graphs(self, action_names, title):
+        params = (self.m_hat, self.v_hat, self.W_hat)
+        MatPlotLib.draw_tgm_graph(
+            action_names=action_names, title=title, params=params, x0=self.x0, x1=self.x1, a0=self.a0, r=self.r_hat
+        )
+        MatPlotLib.draw_tgm_graph(
+            action_names=action_names, title=title, params=params, x0=self.x0, x1=self.x1, a0=self.a0, r=self.r_hat,
+            ellipses=False
+        )
 
     def update_for_d(self):
         self.d_hat = self.d + self.r_hat[0].sum(dim=0)
@@ -389,24 +258,17 @@ class DirichletTGM(AgentInterface):
         self.b_hat = self.b + torch.einsum("na, nj, nk -> ajk", a, self.r_hat[1], self.r_hat[0])
 
     def update_for_z0(self, log_B_hat):
+
         # Compute the non-normalized state probabilities.
-        log_D = self.repeat_across_data_points(self.expected_log_D())
+        log_D = GaussianMixture.expected_log_D(self.d, self.dataset_size)
         log_B = self.expected_log_Bk(log_B_hat)
-        log_det = self.repeat_across_data_points(self.expected_log_determinant())
-        quadratic_form = self.expected_quadratic_form(t=0)
+        log_det = GaussianMixture.expected_log_det_Λ(self.v_hat, self.W_hat, self.dataset_size)
+        quadratic_form = GaussianMixture.expected_quadratic_form(self.x0, self.m_hat, self.β_hat, self.v_hat, self.W_hat)
         log_ρ = torch.zeros([self.dataset_size, self.n_states])
-        log_ρ += log_D + log_B - self.n_states / 2 * math.log(2 * math.pi) + 0.5 * log_det - 0.5 * quadratic_form
+        log_ρ += log_D + log_B + - self.n_states / 2 * math.log(2 * math.pi) + 0.5 * log_det - 0.5 * quadratic_form
 
         # Normalize the state probabilities.
         self.r_hat[0] = torch.softmax(log_ρ, dim=1)
-
-    def expected_log_D(self):
-        sum_d = self.d.sum()
-        return torch.digamma(self.d) - torch.digamma(sum_d)
-
-    def expected_log_B(self):
-        digamma_sum_b = torch.digamma(self.b.sum(dim=1)).unsqueeze(dim=1).repeat(1, self.n_states, 1)
-        return torch.digamma(self.b) - digamma_sum_b
 
     def expected_log_Bk(self, log_B_hat):
         log_B = torch.zeros([self.dataset_size, self.n_states])
@@ -417,27 +279,11 @@ class DirichletTGM(AgentInterface):
                 )
         return log_B
 
-    def expected_log_determinant(self):
-        log_det = []
-        for k in range(self.n_states):
-            digamma_sum = sum([torch.digamma((self.v_hat[k] - i) / 2) for i in range(self.n_states)])
-            log_det.append(self.n_states * math.log(2) + torch.logdet(self.W_hat[k]) + digamma_sum)
-        return torch.tensor(log_det)
-
-    def expected_quadratic_form(self, t):
-        quadratic_form = torch.zeros([self.dataset_size, self.n_states])
-        for n in range(self.dataset_size):
-            for k in range(self.n_states):
-                x = (self.x0[n] - self.m_hat[k]) if t == 0 else (self.x1[n] - self.m_hat[k])
-                quadratic_form[n][k] = self.n_states / self.β_hat[k]
-                quadratic_form[n][k] += self.v_hat[k] * torch.matmul(torch.matmul(x.t(), self.W_hat[k]), x)
-        return quadratic_form
-
     def update_for_z1(self, log_B_hat):
         # Compute the non-normalized state probabilities.
         log_B = self.expected_log_Bj(log_B_hat)
-        log_det = self.repeat_across_data_points(self.expected_log_determinant())
-        quadratic_form = self.expected_quadratic_form(t=1)
+        log_det = GaussianMixture.expected_log_det_Λ(self.v_hat, self.W_hat, self.dataset_size)
+        quadratic_form = GaussianMixture.expected_quadratic_form(self.x1, self.m_hat, self.β_hat, self.v_hat, self.W_hat)
         log_ρ = torch.zeros([self.dataset_size, self.n_states])
         log_ρ += log_B - self.n_states / 2 * math.log(2 * math.pi) + 0.5 * log_det - 0.5 * quadratic_form
 
@@ -455,18 +301,12 @@ class DirichletTGM(AgentInterface):
 
     def update_for_μ_and_Λ(self):
         N = torch.sum(self.r_hat[0], dim=0) + torch.sum(self.r_hat[1], dim=0) + 0.0001
-        x_bar = self.compute_x_bar(N)
+        x_bar = GaussianMixture.tgm_x_bar(self.r_hat, self.x0, self.x1, N)
 
         self.v_hat = self.v + N
         self.β_hat = self.β + N
         self.m_hat = [(self.β[k] * self.m[k] + N[k] * x_bar[k]) / self.β_hat[k] for k in range(self.n_states)]
         self.W_hat = [self.compute_W_hat(N, k, x_bar) for k in range(self.n_states)]
-
-    def compute_x_bar(self, N):
-        return [
-            sum([self.r_hat[0][n][k] * self.x0[n] + self.r_hat[1][n][k] * self.x1[n] for n in range(self.dataset_size)]) / N[k]
-            for k in range(self.n_states)
-        ]
 
     def compute_W_hat(self, N, k, x_bar):
         W_hat = torch.inverse(self.W[k])
@@ -478,9 +318,6 @@ class DirichletTGM(AgentInterface):
         x = x_bar[k] - self.m[k]
         W_hat += (self.β[k] * N[k] / self.β_hat[k]) * torch.outer(x, x)
         return torch.inverse(W_hat)
-
-    def repeat_across_data_points(self, x):
-        return torch.unsqueeze(x, dim=0).repeat(self.dataset_size, 1)
 
     def predict(self, data):
         """

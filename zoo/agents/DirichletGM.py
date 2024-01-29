@@ -1,6 +1,4 @@
 import matplotlib.pyplot as plt
-import matplotlib as mpl
-import numpy as np
 import math
 from os.path import join
 from zoo.agents.AgentInterface import AgentInterface
@@ -8,8 +6,11 @@ from zoo.agents.save.Checkpoint import Checkpoint
 from datetime import datetime
 import torch
 import logging
-from zoo.helpers.KMeans import KMeans
+from zoo.helpers.GaussianMixture import GaussianMixture
 import matplotlib.colors as mcolors
+
+from zoo.helpers.MatPlotLib import MatPlotLib
+from zoo.helpers.PlotsBuilder import PlotsBuilder
 
 
 class DirichletGM(AgentInterface):
@@ -68,33 +69,19 @@ class DirichletGM(AgentInterface):
         self.x = []
 
         # Gaussian mixture prior parameters.
-        self.W = [
-            self.random_psd_matrix([n_observations, n_observations]) if W is None else W[k].cpu()
-            for k in range(n_states)
-        ]
+        self.W = [torch.ones([n_observations, n_observations]) if W is None else W[k].cpu() for k in range(n_states)]
         self.m = [torch.zeros([n_observations]) if m is None else m[k].cpu() for k in range(n_states)]
         self.v = (n_observations - 0.99) * torch.ones([n_states]) if v is None else v.cpu()
         self.β = torch.ones([n_states]) if β is None else β.cpu()
         self.d = torch.ones([n_states]) if d is None else d.cpu()
 
         # Gaussian mixture posterior parameters.
-        self.W_hat = [self.random_psd_matrix([n_observations, n_observations]) for _ in range(n_states)]
+        self.W_hat = [torch.ones([n_observations, n_observations]) for _ in range(n_states)]
         self.m_hat = [torch.ones([n_observations]) for _ in range(n_states)]
         self.v_hat = (n_observations - 0.99) * torch.ones([n_states])
         self.β_hat = torch.ones([n_states])
         self.r_hat = torch.softmax(torch.rand([dataset_size, n_states]), dim=1)
         self.d_hat = torch.ones([n_states])
-
-    @staticmethod
-    def random_psd_matrix(shape):
-        """
-        Generate a random positive semi-definite matrix
-        :param shape: the matrix shape
-        :return: the matrix
-        """
-        a = torch.rand(shape)
-        a = torch.abs(a + a.t())
-        return torch.matmul(a, a.t())
 
     def name(self):
         """
@@ -178,41 +165,52 @@ class DirichletGM(AgentInterface):
         # Close the environment.
         env.close()
 
-    def learn(self, config):
+    def learn(self, config, debug=True, verbose=False):
         """
         Perform on step of gradient descent on the encoder and the decoder
         :param config: the hydra configuration
+        :param debug: whether to display debug information
+        :param verbose: whether to display detailed debug information
         """
 
         if self.learning_step == 0:
 
-            # Perform K-means to initialize means of prior and posterior distributions.
-            μ, r = KMeans.run(self.x, self.n_states)
-            # TODO self.draw_graph(title="After K-means Optimization", ellipses=False, r=r, μ=μ)
-            self.m = μ
-            self.m_hat = μ
-            self.r_hat = r
+            # Initialize the parameter of the Gaussian Mixture using the K-means algorithm.
+            self.m, self.m_hat, self.r_hat, self.W_hat, self.W = \
+                GaussianMixture.k_means_init([self.x], self.v, self.v_hat)
 
-            # Estimate the covariance of the clusters and use it to initialize the Wishart prior and posterior.
-            precision = KMeans.precision(self.x, r)
-            self.W_hat = [precision[k] / self.v_hat[k] for k in range(self.n_states)]
-            self.W = [precision[k] / self.v[k] for k in range(self.n_states)]
+            # Display the result of the k-means algorithm, if needed.
+            if verbose is True:
+                MatPlotLib.draw_gm_graph(
+                    title="After K-means Optimization", params=(self.m_hat, self.v_hat, self.W_hat),
+                    data=self.x, r=self.r_hat, ellipses=False, clusters=True
+                )
+
+        # Display the model's beliefs, if needed.
+        if debug is True or verbose is True:
+            self.draw_beliefs_graphs("Before Optimization")
 
         # Perform inference.
-        self.draw_graph(title="Before Optimization")
-        self.draw_graph(title="Before Optimization", ellipses=False)
-        for i in range(200):  # TODO implement a better stopping condition
+        for i in range(20):  # TODO implement a better stopping condition
+
+            # Perform the update for the latent variable D, and display the model's beliefs (if needed).
             self.update_for_d()
-            # TODO self.draw_graph(title=f"[{i}] After D update")
-            # TODO self.draw_graph(title=f"[{i}] After D update", ellipses=False)
+            if verbose is True:
+                self.draw_beliefs_graphs(f"[{i}] After D update")
+
+            # Perform the update for the latent variable Z, and display the model's beliefs (if needed).
             self.update_for_z()
-            # TODO self.draw_graph(title=f"[{i}] After Z update")
-            # TODO self.draw_graph(title=f"[{i}] After Z update", ellipses=False)
+            if verbose is True:
+                self.draw_beliefs_graphs(f"[{i}] After Z update")
+
+            # Perform the update for the latent variables μ and Λ, and display the model's beliefs (if needed).
             self.update_for_μ_and_Λ()
-            # TODO self.draw_graph(title=f"[{i}] After μ and Λ update")
-            # TODO self.draw_graph(title=f"[{i}] After μ and Λ update", ellipses=False)
-        self.draw_graph(title="After Optimization")
-        self.draw_graph(title="After Optimization", ellipses=False)
+            if verbose is True:
+                self.draw_beliefs_graphs(f"[{i}] After μ and Λ update")
+
+        # Display the model's beliefs, if needed.
+        if debug is True or verbose is True:
+            self.draw_beliefs_graphs("After Optimization")
 
         # Perform empirical Bayes.
         self.W = self.W_hat
@@ -224,96 +222,34 @@ class DirichletGM(AgentInterface):
         self.x.clear()
         self.learning_step += 1
 
-    def draw_graph(self, title="", data=True, ellipses=True, r=None, μ=None):
-
-        # Draw the data points.
-        if data is True:
-            if r is None:
-                r = self.r_hat
-            x = [x_tensor[0] for x_tensor in self.x]
-            y = [x_tensor[1] for x_tensor in self.x]
-
-            c = [tuple(r_hat) for r_hat in r] if r.shape[1] == 3 else [self.colors[torch.argmax(r_hat)] for r_hat in r]
-            plt.scatter(x=x, y=y, c=c)
-
-        # Draw the ellipses corresponding to the current model believes.
-        if ellipses is True:
-            self.make_ellipses()
-
-        if μ is not None:
-            x = [μ_k[0] for μ_k in μ]
-            y = [μ_k[1] for μ_k in μ]
-            plt.scatter(x=x, y=y, marker="X")
-
-        plt.title(title)
-        plt.show()
-
-    def make_ellipses(self):
-        active_components = set(self.r_hat.argmax(dim=1).tolist())
-        for k in range(self.n_states):
-            if k not in active_components:
-                continue
-            color = self.colors[k]
-            covariances = torch.inverse(self.v_hat[k] * self.W_hat[k])
-            v, w = np.linalg.eigh(covariances)
-            u = w[0] / np.linalg.norm(w[0])
-            angle = np.arctan2(u[1], u[0])
-            angle = 180 * angle / np.pi  # convert to degrees
-            v = 3. * np.sqrt(2.) * np.sqrt(np.maximum(v, 0))
-            mean = self.m_hat[k]
-            mean = mean.reshape(2, 1)
-            ell = mpl.patches.Ellipse(mean, v[0], v[1], 180 + angle, color=color)
-            ell.set_clip_box(plt.gca().bbox)
-            ell.set_alpha(0.5)
-            plt.gca().add_artist(ell)
-            plt.gca().set_aspect('equal', 'datalim')
+    def draw_beliefs_graphs(self, title):
+        params = (self.m_hat, self.v_hat, self.W_hat)
+        MatPlotLib.draw_gm_graph(title=title, params=params, data=self.x, r=self.r_hat)
+        MatPlotLib.draw_gm_graph(title=title, params=params, data=self.x, r=self.r_hat, ellipses=False)
 
     def update_for_d(self):
         self.d_hat = self.d + self.r_hat.sum(dim=0)
 
     def update_for_z(self):
+
         # Compute the non-normalized state probabilities.
-        log_D = self.repeat_across_data_points(self.expected_log())
-        log_det = self.repeat_across_data_points(self.expected_log_determinant())
-        quadratic_form = self.expected_quadratic_form()
+        log_D = GaussianMixture.expected_log_D(self.d, self.dataset_size)
+        log_det = GaussianMixture.expected_log_det_Λ(self.v_hat, self.W_hat, self.dataset_size)
+        quadratic_form = GaussianMixture.expected_quadratic_form(self.x, self.m_hat, self.β_hat, self.v_hat, self.W_hat)
         log_ρ = torch.zeros([self.dataset_size, self.n_states])
         log_ρ += log_D - self.n_states / 2 * math.log(2 * math.pi) + 0.5 * log_det - 0.5 * quadratic_form
 
         # Normalize the state probabilities.
         self.r_hat = torch.softmax(log_ρ, dim=1)
 
-    def expected_log(self):
-        sum_d = self.d.sum()
-        return torch.digamma(self.d) - torch.digamma(sum_d)
-
-    def expected_log_determinant(self):
-        log_det = []
-        for k in range(self.n_states):
-            digamma_sum = sum([torch.digamma((self.v_hat[k] - i) / 2) for i in range(self.n_states)])
-            log_det.append(self.n_states * math.log(2) + torch.logdet(self.W_hat[k]) + digamma_sum)
-        return torch.tensor(log_det)
-
-    def expected_quadratic_form(self):
-        quadratic_form = torch.zeros([self.dataset_size, self.n_states])
-        for n in range(self.dataset_size):
-            for k in range(self.n_states):
-                x = self.x[n] - self.m_hat[k]
-                quadratic_form[n][k] = self.n_states / self.β_hat[k]
-                quadratic_form[n][k] += self.v_hat[k] * torch.matmul(torch.matmul(x.t(), self.W_hat[k]), x)
-        return quadratic_form
-
     def update_for_μ_and_Λ(self):
         N = torch.sum(self.r_hat, dim=0) + 0.0001
-        x_bar = self.compute_x_bar(N)
+        x_bar = GaussianMixture.gm_x_bar(self.r_hat, self.x, N)
 
         self.v_hat = self.v + N
         self.β_hat = self.β + N
         self.m_hat = [(self.β[k] * self.m[k] + N[k] * x_bar[k]) / self.β_hat[k] for k in range(self.n_states)]
         self.W_hat = [self.compute_W_hat(N, k, x_bar) for k in range(self.n_states)]
-
-    def compute_x_bar(self, N):
-        return \
-            [sum([self.r_hat[n][k] * self.x[n] for n in range(self.dataset_size)]) / N[k] for k in range(self.n_states)]
 
     def compute_W_hat(self, N, k, x_bar):
         W_hat = torch.inverse(self.W[k])
@@ -323,9 +259,6 @@ class DirichletGM(AgentInterface):
         x = x_bar[k] - self.m[k]
         W_hat += (self.β[k] * N[k] / self.β_hat[k]) * torch.outer(x, x)
         return torch.inverse(W_hat)
-
-    def repeat_across_data_points(self, x):
-        return torch.unsqueeze(x, dim=0).repeat(self.dataset_size, 1)
 
     def predict(self, data):
         """

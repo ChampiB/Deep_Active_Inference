@@ -1,6 +1,8 @@
 import gc
+import math
 import matplotlib.pyplot as plt
 import torch
+from zoo.helpers.PlotsBuilder import PlotsBuilder
 
 
 class MatPlotLib:
@@ -51,3 +53,60 @@ class MatPlotLib:
             plt.tight_layout()
         plt.savefig(out_f_name, dpi=dpi, transparent=True)
         MatPlotLib.close()
+
+    @staticmethod
+    def draw_gm_graph(params, data, r, title="", clusters=False, ellipses=True):
+        """
+        Draw the Gaussian Mixture graph
+        :param params: a 3-tuples of the form (m_hat, v_hat, W_hat)
+        :param data: the data points
+        :param r: the responsibilities for all data points
+        :param title: the title of the figure
+        :param clusters: whether to draw the cluster centers
+        :param ellipses: whether to draw the ellipses
+        """
+        plots = PlotsBuilder(title)
+        plots.draw_gaussian_mixture(
+            title="Observation at t = 0", data=data, r=r, params=params, clusters=clusters, ellipses=ellipses
+        )
+        plots.show()
+
+    @staticmethod
+    def draw_tgm_graph(action_names, params, x0, x1, a0, r, title="", clusters=False, ellipses=False):
+        """
+        Draw the Temporal Gaussian Mixture graph
+        :param action_names: name of all the environment's actions
+        :param params: a 3-tuples of the form (m_hat, v_hat, W_hat)
+        :param a0: the actions at time step zero
+        :param x0: the data points at time step zero
+        :param x1: the data points at time step one
+        :param r: the responsibilities for all data points at time steps zero and one
+        :param title: the title of the figure
+        :param clusters: whether to draw the cluster centers
+        :param ellipses: whether to draw the ellipses
+        """
+
+        # Retrieve the number of actions.
+        n_actions = len(action_names)
+
+        # Create the plot builder.
+        plots = PlotsBuilder(title, n_rows=1 + math.ceil(n_actions / 4.0), n_cols=4)
+
+        # Draw the model's beliefs.
+        plots.draw_gaussian_mixture(
+            title="Observation at t = 0", data=x0, r=r[0], params=params, clusters=clusters, ellipses=ellipses
+        )
+        plots.draw_gaussian_mixture(
+            title="Observation at t = 1", data=x1, r=r[1], params=params, clusters=clusters, ellipses=ellipses
+        )
+
+        # Draw the responsibilities.
+        plots.draw_responsibility_histograms(title="Responsibilities at t = 0", r=r[0])
+        plots.draw_responsibility_histograms(title="Responsibilities at t = 1", r=r[1])
+
+        # Draw the transition graph for each action.
+        for action in range(n_actions):
+            plots.draw_transition_graph(action, a0, r, title=f"Transition for action = {action_names[action]}")
+
+        # Show all the plots.
+        plots.show()
