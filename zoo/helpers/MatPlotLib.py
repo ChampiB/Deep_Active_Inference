@@ -65,10 +65,11 @@ class MatPlotLib:
         :param clusters: whether to draw the cluster centers
         :param ellipses: whether to draw the ellipses
         """
-        plots = PlotsBuilder(title)
+        plots = PlotsBuilder(title, n_cols=2)
         plots.draw_gaussian_mixture(
             title="Observation at t = 0", data=data, r=r, params=params, clusters=clusters, ellipses=ellipses
         )
+        plots.draw_responsibility_histograms(title="Responsibilities at t = 0", r=r)
         plots.show()
 
     @staticmethod

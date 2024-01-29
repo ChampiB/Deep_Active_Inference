@@ -30,7 +30,7 @@ class KMeans:
         μ = []
         sum_r = r.sum(dim=0)
         for k in range(r.shape[1]):
-            μ_k = sum([r[n][k] * x[n] for n in range(len(x))]) / sum_r[k]
+            μ_k = sum([r[n][k] * x[n] for n in range(len(x))]) / (sum_r[k] + 0.00001)
             μ.append(μ_k)
         return μ
 
@@ -39,6 +39,9 @@ class KMeans:
         precision = []
         for k in range(r.shape[1]):
             x_k = [torch.unsqueeze(x[n], dim=0) for n in range(len(x)) if r[n][k] == 1]
-            x_k = torch.concat(x_k, dim=0).t()
-            precision.append(torch.inverse(torch.cov(x_k)))
+            if len(x_k) != 0:
+                x_k = torch.concat(x_k, dim=0).t()
+                precision.append(torch.inverse(torch.cov(x_k)))
+            else:
+                precision.append(torch.eye(x[0].shape[0]))
         return precision

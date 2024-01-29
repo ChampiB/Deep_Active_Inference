@@ -23,6 +23,7 @@ setup(
         "prettytable==3.7.0",
         "paramiko==3.1.0",
         "pydot",
+        "bigtree",
         "PyYAML==5.4.1",
         "docutils==0.19",
         "matplotlib==3.6.2",

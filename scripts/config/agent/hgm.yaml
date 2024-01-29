@@ -1,9 +1,9 @@
-name: "gm_${agent.n_states}"
+name: "hgm_${agent.n_states}"
 
 defaults:
   - action_selection: random
 
-_target_: zoo.agents.GM.GM
+_target_: zoo.agents.HGM.HGM
 
 # Miscellaneous
 n_actions: ${environment.n_actions}

@@ -1,4 +1,3 @@
-import matplotlib.pyplot as plt
 import math
 from os.path import join
 from zoo.agents.AgentInterface import AgentInterface
@@ -8,9 +7,7 @@ import torch
 import logging
 from zoo.helpers.GaussianMixture import GaussianMixture
 import matplotlib.colors as mcolors
-
 from zoo.helpers.MatPlotLib import MatPlotLib
-from zoo.helpers.PlotsBuilder import PlotsBuilder
 
 
 class DirichletGM(AgentInterface):
@@ -139,7 +136,7 @@ class DirichletGM(AgentInterface):
 
             # Perform one iteration of training (if needed).
             if len(self.x) >= self.dataset_size:
-                self.learn(config)
+                self.learn()
 
             # Save the agent (if needed).
             if self.steps_done % config.checkpoint.frequency == 0:
@@ -165,10 +162,9 @@ class DirichletGM(AgentInterface):
         # Close the environment.
         env.close()
 
-    def learn(self, config, debug=True, verbose=False):
+    def learn(self, debug=True, verbose=False):
         """
         Perform on step of gradient descent on the encoder and the decoder
-        :param config: the hydra configuration
         :param debug: whether to display debug information
         :param verbose: whether to display detailed debug information
         """

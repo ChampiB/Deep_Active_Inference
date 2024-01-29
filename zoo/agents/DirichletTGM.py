@@ -6,10 +6,7 @@ from datetime import datetime
 import torch
 import logging
 from zoo.helpers.GaussianMixture import GaussianMixture
-import matplotlib.pyplot as plt
-
 from zoo.helpers.MatPlotLib import MatPlotLib
-from zoo.helpers.PlotsBuilder import PlotsBuilder
 
 
 class DirichletTGM(AgentInterface):
@@ -144,7 +141,7 @@ class DirichletTGM(AgentInterface):
 
             # Perform one iteration of training (if needed).
             if len(self.x0) >= self.dataset_size:
-                self.learn(env, config)
+                self.learn(env)
 
             # Save the agent (if needed).
             if self.steps_done % config.checkpoint.frequency == 0:
@@ -170,11 +167,10 @@ class DirichletTGM(AgentInterface):
         # Close the environment.
         env.close()
 
-    def learn(self, env, config, debug=True, verbose=False):
+    def learn(self, env, debug=True, verbose=False):
         """
         Perform on step of gradient descent on the encoder and the decoder
         :param env: the environment on which the agent is trained
-        :param config: the hydra configuration
         :param debug: whether to display debug information
         :param verbose: whether to display detailed debug information
         """

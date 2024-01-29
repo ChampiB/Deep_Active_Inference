@@ -1,7 +1,7 @@
 # Define the agent, environment and task
 defaults:
   - environment: maze
-  - agent: dirichlet_tmgm
+  - agent: hgm
   - task: training
   - _self_
 

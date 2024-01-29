@@ -1,3 +1,4 @@
+import numpy
 from matplotlib import colors
 import matplotlib.image as mpimg
 from io import BytesIO
@@ -37,10 +38,11 @@ class PlotsBuilder:
         
     @property
     def current_axis(self):
-        try:
-            return self.axes[int(self.current_plot_index / self.n_cols)][self.current_plot_index % self.n_cols]
-        except TypeError:
+        if self.n_rows == 1 and self.n_cols == 1:
             return self.axes
+        if self.n_rows == 1 or self.n_cols == 1:
+            return self.axes[self.current_plot_index]
+        return self.axes[int(self.current_plot_index / self.n_cols)][self.current_plot_index % self.n_cols]
 
     def draw_gaussian_mixture(self, title="", data=None, r=None, params=None, clusters=False, ellipses=True):
 
@@ -78,6 +80,10 @@ class PlotsBuilder:
             if k not in active_components:
                 continue
             color = self.colors[k]
+            print("ell[W_hat]: ", W_hat)
+            print("ell[m_hat]: ", m_hat)
+            print("ell[v_hat]: ", v_hat)
+
             covariances = torch.inverse(v_hat[k] * W_hat[k])
             v, w = np.linalg.eigh(covariances)
             u = w[0] / np.linalg.norm(w[0])
