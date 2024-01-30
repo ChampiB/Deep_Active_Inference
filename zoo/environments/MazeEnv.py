@@ -133,8 +133,8 @@ class MazeEnv(EnvInterface):
         """
 
         # Increase y coordinate, if needed.
-        if self.maze[self.y_pos + 1][self.x_pos] == 0:
-            self.y_pos += 1.0
+        if self.maze[self.y_pos - 1][self.x_pos] == 0:
+            self.y_pos -= 1.0
 
         # Return true of the state is terminal and false otherwise.
         return self.is_terminal_state()
@@ -144,9 +144,10 @@ class MazeEnv(EnvInterface):
         Execute the action "up" in the environment.
         :return: true of the state is terminal and false otherwise.
         """
+
         # Increase y coordinate, if needed.
-        if self.maze[self.y_pos - 1][self.x_pos] == 0:
-            self.y_pos -= 1.0
+        if self.maze[self.y_pos + 1][self.x_pos] == 0:
+            self.y_pos += 1.0
 
         # Return true of the state is terminal and false otherwise.
         return self.is_terminal_state()
@@ -156,6 +157,7 @@ class MazeEnv(EnvInterface):
         Execute the action "right" in the environment.
         :return: true of the state is terminal and false otherwise.
         """
+
         # Increase y coordinate, if needed.
         if self.maze[self.y_pos][self.x_pos + 1] == 0:
             self.x_pos += 1.0
@@ -168,6 +170,7 @@ class MazeEnv(EnvInterface):
         Execute the action "left" in the environment.
         :return: true of the state is terminal and false otherwise.
         """
+
         # Increase y coordinate, if needed.
         if self.maze[self.y_pos][self.x_pos - 1] == 0:
             self.x_pos -= 1.0

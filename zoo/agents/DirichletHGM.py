@@ -17,7 +17,7 @@ class DirichletHGM(AgentInterface):
     def __init__(
         self, n_states, dataset_size, name="", tensorboard_dir="", checkpoint_dir="", action_selection=None,
         W=None, m=None, v=None, β=None, d=None, n_observations=2, n_actions=4, steps_done=0,
-        learning_step=0, min_data_points=10, **_
+        learning_step=0, min_data_points=7, **_
     ):
         """
         Constructor

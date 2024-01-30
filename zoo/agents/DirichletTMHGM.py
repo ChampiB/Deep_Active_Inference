@@ -19,7 +19,7 @@ class DirichletTMHGM(AgentInterface):
     def __init__(
         self, name, tensorboard_dir, checkpoint_dir, action_selection, n_states, dataset_size,
         W=None, m=None, v=None, β=None, d=None, b=None, n_observations=2, n_actions=4, steps_done=0,
-        learning_step=0, **_
+        learning_step=0, min_data_points=10, **_
     ):
         """
         Constructor
@@ -39,6 +39,7 @@ class DirichletTMHGM(AgentInterface):
         :param D: the prior probability of the Gaussian components at time step 0
         :param B: the prior probability of the Gaussian components at time step 1
         :param learning_step: the number of learning steps performed so far
+        :param min_data_points: the minimum number of data points required for a new hierarchical to start
         """
 
         # Call parent constructor.
@@ -56,6 +57,7 @@ class DirichletTMHGM(AgentInterface):
         self.n_states = n_states
         self.n_observations = n_observations
         self.colors = ['red', 'green', 'blue', 'purple', 'gray', 'pink', 'turquoise', 'orange', 'brown', 'cyan']
+        self.min_data_points = min_data_points
 
         # The number of learning steps performed so far.
         self.learning_step = learning_step
@@ -66,7 +68,9 @@ class DirichletTMHGM(AgentInterface):
         self.a0 = []
 
         # The Dirichlet Hierarchical Gaussian Mixture to use for the perception model at time step 1.
-        self.gm1 = DirichletHGM(n_states=n_states, dataset_size=dataset_size, W=W, m=m, v=v, β=β, d=d)
+        self.gm1 = DirichletHGM(
+            n_states=n_states, dataset_size=dataset_size, W=W, m=m, v=v, β=β, d=d, min_data_points=min_data_points
+        )
 
         # The Dirichlet Gaussian Mixture to use for the perception model at time step 1.
         self.gm0 = DirichletGM(n_states=n_states, dataset_size=dataset_size, W=W, m=m, v=v, β=β, d=d)
@@ -173,10 +177,10 @@ class DirichletTMHGM(AgentInterface):
 
         # Fit the perception models.
         self.gm1.x = self.x1
-        self.gm1.learn(clear=False, debug=True)  # TODO verbose)
+        self.gm1.learn(clear=False, verbose=verbose, debug=verbose)
         self.gm0 = self.copy_gm(self.gm1.gm)
         self.gm0.x = self.x0
-        self.gm0.learn(clear=False, debug=True)  # TODO verbose)
+        self.gm0.learn_z_and_d(verbose=verbose, debug=verbose)
 
         # Retrieve the responsibilities.
         self.r_hat[0] = self.gm0.r_hat
@@ -279,7 +283,8 @@ class DirichletTMHGM(AgentInterface):
             "β": self.gm1.β_hat,
             "d": self.gm1.d_hat,
             "b": self.b_hat,
-            "learning_step": self.learning_step
+            "learning_step": self.learning_step,
+            "min_data_points": self.min_data_points
         }, checkpoint_file)
 
     @staticmethod
@@ -307,7 +312,8 @@ class DirichletTMHGM(AgentInterface):
             "β": checkpoint["β"],
             "d": checkpoint["d"],
             "b": checkpoint["b"],
-            "learning_step": checkpoint["learning_step"]
+            "learning_step": checkpoint["learning_step"],
+            "min_data_points": checkpoint["min_data_points"]
         }
 
     def draw_reconstructed_images(self, env, grid_size):

@@ -39,8 +39,7 @@ class KMeans:
         precision = []
         for k in range(r.shape[1]):
             x_k = [torch.unsqueeze(x[n], dim=0) for n in range(len(x)) if r[n][k] == 1]
-            # TODO if len(x_k) > r.shape[1] * r.shape[1]:
-            if len(x_k) != 0:
+            if len(x_k) >= 2:
                 x_k = torch.concat(x_k, dim=0).t()
                 precision.append(torch.inverse(torch.cov(x_k)))
             else:

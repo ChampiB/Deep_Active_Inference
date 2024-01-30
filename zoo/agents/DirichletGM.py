@@ -219,6 +219,29 @@ class DirichletGM(AgentInterface):
             self.x.clear()
         self.learning_step += 1
 
+    def learn_z_and_d(self, debug=True, verbose=False):
+
+        # Display the model's beliefs, if needed.
+        if debug is True or verbose is True:
+            self.draw_beliefs_graphs("Before Optimization")
+
+        # Perform inference.
+        for i in range(20):  # TODO implement a better stopping condition
+
+            # Perform the update for the latent variable D, and display the model's beliefs (if needed).
+            self.update_for_d()
+            if verbose is True:
+                self.draw_beliefs_graphs(f"[{i}] After D update")
+
+            # Perform the update for the latent variable Z, and display the model's beliefs (if needed).
+            self.update_for_z()
+            if verbose is True:
+                self.draw_beliefs_graphs(f"[{i}] After Z update")
+
+        # Display the model's beliefs, if needed.
+        if debug is True or verbose is True:
+            self.draw_beliefs_graphs("After Optimization")
+
     def data_of_component(self, k):
         ks = self.r_hat.argmax(dim=1).tolist()
         return [x for n, x in enumerate(self.x) if ks[n] == k]

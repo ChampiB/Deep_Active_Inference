@@ -13,4 +13,3 @@ dataset_size: 500
 tensorboard_dir: "${tensorboard.directory}"
 checkpoint_dir: "${checkpoint.directory}"
 trainable: True
-verbose: False
