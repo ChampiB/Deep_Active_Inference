@@ -1,22 +1,24 @@
-import math
+import copy
 from os.path import join
 from zoo.agents.AgentInterface import AgentInterface
+from zoo.agents.DirichletGM import DirichletGM
+from zoo.agents.DirichletHGM import DirichletHGM
 from zoo.agents.save.Checkpoint import Checkpoint
 from datetime import datetime
 import torch
 import logging
-from zoo.helpers.GaussianMixture import GaussianMixture
 from zoo.helpers.MatPlotLib import MatPlotLib
 
 
-class TGM(AgentInterface):
+class DirichletTMHGM(AgentInterface):
     """
-    Implement a Temporal Gaussian Mixture taking random each action.
+    Implement a Temporal Model with Hierarchical Gaussian Mixture likelihood and Dirichlet prior.
+    This model takes random each action.
     """
 
     def __init__(
         self, name, tensorboard_dir, checkpoint_dir, action_selection, n_states, dataset_size,
-        W=None, m=None, v=None, β=None, D=None, B=None, n_observations=2, n_actions=4, steps_done=0,
+        W=None, m=None, v=None, β=None, d=None, b=None, n_observations=2, n_actions=4, steps_done=0,
         learning_step=0, **_
     ):
         """
@@ -30,7 +32,6 @@ class TGM(AgentInterface):
         :param tensorboard_dir: the directory in which tensorboard's files will be written
         :param checkpoint_dir: the directory in which the agent should be saved
         :param steps_done: the number of training iterations performed to date.
-        :param verbose: whether to log weights information such as mean, min and max values of layers' weights
         :param W: the scale matrix of the Wishart prior
         :param v: degree of freedom of the Wishart prior
         :param m: the mean of the prior over μ
@@ -64,20 +65,18 @@ class TGM(AgentInterface):
         self.x1 = []
         self.a0 = []
 
+        # The Dirichlet Hierarchical Gaussian Mixture to use for the perception model at time step 1.
+        self.gm1 = DirichletHGM(n_states=n_states, dataset_size=dataset_size, W=W, m=m, v=v, β=β, d=d)
+
+        # The Dirichlet Gaussian Mixture to use for the perception model at time step 1.
+        self.gm0 = DirichletGM(n_states=n_states, dataset_size=dataset_size, W=W, m=m, v=v, β=β, d=d)
+
         # Prior parameters.
-        self.W = [torch.ones([n_observations, n_observations]) if W is None else W[k].cpu() for k in range(n_states)]
-        self.m = [torch.zeros([n_observations]) if m is None else m[k].cpu() for k in range(n_states)]
-        self.v = (n_observations - 0.99) * torch.ones([n_states]) if v is None else v.cpu()
-        self.β = torch.ones([n_states]) if β is None else β.cpu()
-        self.D = torch.ones([n_states]) / n_states if D is None else D.cpu()
-        self.B = torch.ones([n_actions, n_states, n_states]) / n_states if B is None else B.cpu()
+        self.b = torch.ones([n_actions, n_states, n_states]) * 0.2 if b is None else b.cpu()
 
         # Posterior parameters.
-        self.W_hat = [torch.ones([n_observations, n_observations]) for _ in range(n_states)]
-        self.m_hat = [torch.ones([n_observations]) for _ in range(n_states)]
-        self.v_hat = (n_observations - 0.99) * torch.ones([n_states])
-        self.β_hat = torch.ones([n_states])
         self.r_hat = [torch.softmax(torch.rand([dataset_size, n_states]), dim=1) for _ in range(2)]
+        self.b_hat = torch.ones([n_actions, n_states, n_states]) * 0.2
 
     def name(self):
         """
@@ -172,51 +171,35 @@ class TGM(AgentInterface):
         :param verbose: whether to display detailed debug information
         """
 
-        if self.learning_step == 0:
+        # Fit the perception models.
+        self.gm1.x = self.x1
+        self.gm1.learn(clear=False, debug=True)  # TODO verbose)
+        self.gm0 = self.copy_gm(self.gm1.gm)
+        self.gm0.x = self.x0
+        self.gm0.learn(clear=False, debug=True)  # TODO verbose)
 
-            # Initialize the parameter of the Gaussian Mixture using the K-means algorithm.
-            self.m, self.m_hat, self.r_hat[1], self.W_hat, self.W, self.r_hat[0] = \
-                GaussianMixture.k_means_init([self.x0, self.x1], self.v, self.v_hat)
-
-            # Display the result of the k-means algorithm, if needed.
-            if verbose is True:
-                MatPlotLib.draw_tgm_graph(
-                    action_names=env.action_names, title="After K-means Optimization",
-                    params=(self.m_hat, self.v_hat, self.W_hat), x0=self.x0, x1=self.x1, a0=self.a0, r=self.r_hat,
-                    ellipses=False, clusters=True
-                )
+        # Retrieve the responsibilities.
+        self.r_hat[0] = self.gm0.r_hat
+        self.r_hat[1] = self.gm1.r_hat
 
         # Display the model's beliefs, if needed.
         if debug is True or verbose is True:
             self.draw_beliefs_graphs(env.action_names, "Before Optimization")
 
-        # Perform inference.
+        # Perform inference on the prediction model.
         for i in range(20):  # TODO implement a better stopping condition
 
-            # Perform the update for the latent variable Z0, and display the model's beliefs (if needed).
-            self.update_for_z0()
+            # Perform the update for the latent variable B, and display the model's beliefs (if needed).
+            self.update_for_b()
             if verbose is True:
-                self.draw_beliefs_graphs(env.action_names, f"[{i}] After Z0 update")
-
-            # Perform the update for the latent variable Z1, and display the model's beliefs (if needed).
-            self.update_for_z1()
-            if verbose is True:
-                self.draw_beliefs_graphs(env.action_names, f"[{i}] After Z1 update")
-
-            # Perform the update for the latent variables μ and Λ, and display the model's beliefs (if needed).
-            self.update_for_μ_and_Λ()
-            if verbose is True:
-                self.draw_beliefs_graphs(env.action_names, f"[{i}] After μ and Λ update")
+                self.draw_beliefs_graphs(env.action_names, f"[{i}] After B update")
 
         # Display the model's beliefs, if needed.
         if debug is True or verbose is True:
             self.draw_beliefs_graphs(env.action_names, "After Optimization")
 
         # Perform empirical Bayes.
-        self.W = self.W_hat
-        self.m = self.m_hat
-        self.v = self.v_hat
-        self.β = self.β_hat
+        self.b = self.b_hat
 
         # Clear the dataset and increase learning step.
         self.x0.clear()
@@ -224,76 +207,38 @@ class TGM(AgentInterface):
         self.a0.clear()
         self.learning_step += 1
 
+    def copy_gm(self, gm):
+        new_gm = DirichletGM(n_states=gm.n_states, dataset_size=gm.dataset_size)
+        new_gm.W = copy.deepcopy(gm.W)
+        new_gm.m = copy.deepcopy(gm.m)
+        new_gm.v = copy.deepcopy(gm.v)
+        new_gm.β = copy.deepcopy(gm.β)
+        new_gm.d = copy.deepcopy(gm.d)
+        new_gm.W_hat = copy.deepcopy(gm.W_hat)
+        new_gm.m_hat = copy.deepcopy(gm.m_hat)
+        new_gm.v_hat = copy.deepcopy(gm.v_hat)
+        new_gm.β_hat = copy.deepcopy(gm.β_hat)
+        new_gm.d_hat = copy.deepcopy(gm.d_hat)
+        return new_gm
+
     def draw_beliefs_graphs(self, action_names, title):
-        params = (self.m_hat, self.v_hat, self.W_hat)
-        MatPlotLib.draw_tgm_graph(
-            action_names=action_names, title=title, params=params, x0=self.x0, x1=self.x1, a0=self.a0, r=self.r_hat
+        MatPlotLib.draw_dirichlet_tmhgm_graph(
+            action_names=action_names, title=title,
+            params0=(self.gm1.m_hat, self.gm1.v_hat, self.gm1.W_hat),
+            params1=(self.gm1.m_hat, self.gm1.v_hat, self.gm1.W_hat),
+            x0=self.x0, x1=self.x1, a0=self.a0, r=self.r_hat
         )
-        MatPlotLib.draw_tgm_graph(
-            action_names=action_names, title=title, params=params, x0=self.x0, x1=self.x1, a0=self.a0, r=self.r_hat,
+        MatPlotLib.draw_dirichlet_tmhgm_graph(
+            action_names=action_names, title=title,
+            params0=(self.gm1.m_hat, self.gm1.v_hat, self.gm1.W_hat),
+            params1=(self.gm1.m_hat, self.gm1.v_hat, self.gm1.W_hat),
+            x0=self.x0, x1=self.x1, a0=self.a0, r=self.r_hat,
             ellipses=False
         )
 
-    def update_for_z0(self):
-        # Compute the non-normalized state probabilities.
-        log_D = GaussianMixture.repeat_across(torch.log(self.D), self.dataset_size, dim=0)
-        log_B = self.expected_log_Bk()
-        log_det = GaussianMixture.expected_log_det_Λ(self.v_hat, self.W_hat, self.dataset_size)
-        quadratic_form = GaussianMixture.expected_quadratic_form(self.x0, self.m_hat, self.β_hat, self.v_hat, self.W_hat)
-        log_ρ = torch.zeros([self.dataset_size, self.n_states])
-        log_ρ += log_D + log_B - self.n_states / 2 * math.log(2 * math.pi) + 0.5 * log_det - 0.5 * quadratic_form
-
-        # Normalize the state probabilities.
-        self.r_hat[0] = torch.softmax(log_ρ, dim=1)
-
-    def expected_log_Bk(self):
-        log_B = torch.zeros([self.dataset_size, self.n_states])
-        for n in range(self.dataset_size):
-            for k in range(self.n_states):
-                log_B[n][k] = sum(
-                    [self.r_hat[1][n][j] * torch.log(self.B[self.a0[n]])[j][k] for j in range(self.n_states)]
-                )
-        return log_B
-
-    def update_for_z1(self):
-        # Compute the non-normalized state probabilities.
-        log_B = self.expected_log_Bj()
-        log_det = GaussianMixture.expected_log_det_Λ(self.v_hat, self.W_hat, self.dataset_size)
-        quadratic_form = GaussianMixture.expected_quadratic_form(self.x1, self.m_hat, self.β_hat, self.v_hat, self.W_hat)
-        log_ρ = torch.zeros([self.dataset_size, self.n_states])
-        log_ρ += log_B - self.n_states / 2 * math.log(2 * math.pi) + 0.5 * log_det - 0.5 * quadratic_form
-
-        # Normalize the state probabilities.
-        self.r_hat[1] = torch.softmax(log_ρ, dim=1)
-
-    def expected_log_Bj(self):
-        log_B = torch.zeros([self.dataset_size, self.n_states])
-        for n in range(self.dataset_size):
-            for j in range(self.n_states):
-                log_B[n][j] = sum(
-                    [self.r_hat[0][n][j] * torch.log(self.B[self.a0[n]])[j][k] for k in range(self.n_states)]
-                )
-        return log_B
-
-    def update_for_μ_and_Λ(self):
-        N = torch.sum(self.r_hat[0], dim=0) + torch.sum(self.r_hat[1], dim=0) + 0.0001
-        x_bar = GaussianMixture.tgm_x_bar(self.r_hat, self.x0, self.x1, N)
-
-        self.v_hat = self.v + N
-        self.β_hat = self.β + N
-        self.m_hat = [(self.β[k] * self.m[k] + N[k] * x_bar[k]) / self.β_hat[k] for k in range(self.n_states)]
-        self.W_hat = [self.compute_W_hat(N, k, x_bar) for k in range(self.n_states)]
-
-    def compute_W_hat(self, N, k, x_bar):
-        W_hat = torch.inverse(self.W[k])
-        for n in range(self.dataset_size):
-            x = self.x0[n] - x_bar[k]
-            W_hat += self.r_hat[0][n][k] * torch.outer(x, x)
-            x = self.x1[n] - x_bar[k]
-            W_hat += self.r_hat[1][n][k] * torch.outer(x, x)
-        x = x_bar[k] - self.m[k]
-        W_hat += (self.β[k] * N[k] / self.β_hat[k]) * torch.outer(x, x)
-        return torch.inverse(W_hat)
+    def update_for_b(self):
+        a = torch.nn.functional.one_hot(torch.tensor(self.a0))
+        self.b_hat = self.b + torch.einsum("na, nj, nk -> ajk", a, self.r_hat[1], self.r_hat[0])
 
     def predict(self, data):
         """
@@ -328,12 +273,12 @@ class TGM(AgentInterface):
             "tensorboard_dir": self.tensorboard_dir,
             "checkpoint_dir": self.checkpoint_dir,
             "action_selection": dict(self.action_selection),
-            "W": self.W,
-            "v": self.v,
-            "m": self.m,
-            "β": self.β,
-            "D": self.D,
-            "B": self.B,
+            "W": self.gm1.W_hat,
+            "v": self.gm1.v_hat,
+            "m": self.gm1.m_hat,
+            "β": self.gm1.β_hat,
+            "d": self.gm1.d_hat,
+            "b": self.b_hat,
             "learning_step": self.learning_step
         }, checkpoint_file)
 
@@ -360,8 +305,8 @@ class TGM(AgentInterface):
             "v": checkpoint["v"],
             "m": checkpoint["m"],
             "β": checkpoint["β"],
-            "D": checkpoint["D"],
-            "B": checkpoint["B"],
+            "d": checkpoint["d"],
+            "b": checkpoint["b"],
             "learning_step": checkpoint["learning_step"]
         }
 

@@ -63,7 +63,7 @@ class DirichletTMGM(AgentInterface):
         self.x1 = []
         self.a0 = []
 
-        # Gaussian mixture prior parameters.
+        # Prior parameters.
         self.W = [torch.ones([n_observations, n_observations]) if W is None else W[k].cpu() for k in range(n_states)]
         self.m = [torch.zeros([n_observations]) if m is None else m[k].cpu() for k in range(n_states)]
         self.v = (n_observations - 0.99) * torch.ones([n_states]) if v is None else v.cpu()
@@ -71,7 +71,7 @@ class DirichletTMGM(AgentInterface):
         self.d = torch.ones([n_states]) if d is None else d.cpu()
         self.b = torch.ones([n_actions, n_states, n_states]) * 0.2 if b is None else b.cpu()
 
-        # Gaussian mixture posterior parameters.
+        # Posterior parameters.
         self.W_hat = [torch.ones([n_observations, n_observations]) for _ in range(n_states)]
         self.m_hat = [torch.ones([n_observations]) for _ in range(n_states)]
         self.v_hat = (n_observations - 0.99) * torch.ones([n_states])
@@ -226,6 +226,8 @@ class DirichletTMGM(AgentInterface):
         self.m = self.m_hat
         self.v = self.v_hat
         self.β = self.β_hat
+        self.d = self.d_hat
+        self.b = self.b_hat
 
         # Clear the dataset and increase learning step.
         self.x0.clear()

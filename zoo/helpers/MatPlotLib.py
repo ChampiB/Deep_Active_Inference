@@ -111,3 +111,47 @@ class MatPlotLib:
 
         # Show all the plots.
         plots.show()
+
+    @staticmethod
+    def draw_dirichlet_tmhgm_graph(
+        action_names, params0, params1, x0, x1, a0, r, title="", clusters=False, ellipses=True
+    ):
+        """
+        Draw the Temporal Gaussian Mixture graph
+        :param action_names: name of all the environment's actions
+        :param params0: a 3-tuples of the form (m_hat, v_hat, W_hat)
+        :param params1: a 3-tuples of the form (m_hat, v_hat, W_hat)
+        :param a0: the actions at time step zero
+        :param x0: the data points at time step zero
+        :param x1: the data points at time step one
+        :param r: the responsibilities for all data points at time steps zero and one
+        :param title: the title of the figure
+        :param clusters: whether to draw the cluster centers
+        :param ellipses: whether to draw the ellipses
+        """
+
+        # Retrieve the number of actions.
+        n_actions = len(action_names)
+
+        # Create the plot builder.
+        plots = PlotsBuilder(title, n_rows=1 + math.ceil(n_actions / 4.0), n_cols=4)
+
+        # Draw the model's beliefs.
+        plots.draw_gaussian_mixture(
+            title="Observation at t = 0", data=x0, r=r[0], params=params0, clusters=clusters, ellipses=ellipses
+        )
+        plots.draw_gaussian_mixture(
+            title="Observation at t = 1", data=x1, r=r[1], params=params1, clusters=clusters, ellipses=ellipses
+        )
+
+        # Draw the responsibilities.
+        plots.draw_responsibility_histograms(title="Responsibilities at t = 0", r=r[0])
+        plots.draw_responsibility_histograms(title="Responsibilities at t = 1", r=r[1])
+
+        # Draw the transition graph for each action.
+        for action in range(n_actions):
+            plots.draw_transition_graph(action, a0, r, title=f"Transition for action = {action_names[action]}")
+
+        # Show all the plots.
+        plots.show()
+

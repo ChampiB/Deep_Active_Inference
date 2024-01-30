@@ -63,14 +63,14 @@ class DirichletGM(AgentInterface):
         # The dataset used for training.
         self.x = []
 
-        # Gaussian mixture prior parameters.
+        # Prior parameters.
         self.W = [torch.ones([n_observations, n_observations]) if W is None else W[k].cpu() for k in range(n_states)]
         self.m = [torch.zeros([n_observations]) if m is None else m[k].cpu() for k in range(n_states)]
         self.v = (n_observations - 0.99) * torch.ones([n_states]) if v is None else v.cpu()
         self.β = torch.ones([n_states]) if β is None else β.cpu()
         self.d = torch.ones([n_states]) if d is None else d.cpu()
 
-        # Gaussian mixture posterior parameters.
+        # Posterior parameters.
         self.W_hat = [torch.ones([n_observations, n_observations]) for _ in range(n_states)]
         self.m_hat = [torch.ones([n_observations]) for _ in range(n_states)]
         self.v_hat = (n_observations - 0.99) * torch.ones([n_states])
@@ -212,6 +212,7 @@ class DirichletGM(AgentInterface):
         self.m = self.m_hat
         self.v = self.v_hat
         self.β = self.β_hat
+        self.d = self.d_hat
 
         # Clear the dataset and increase learning step.
         if clear is True:

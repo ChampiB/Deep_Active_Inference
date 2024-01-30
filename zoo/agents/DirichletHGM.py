@@ -2,7 +2,6 @@ from os.path import join
 from bigtree import Node
 from zoo.agents.AgentInterface import AgentInterface
 from zoo.agents.DirichletGM import DirichletGM
-from zoo.agents.GM import GM
 from zoo.agents.save.Checkpoint import Checkpoint
 from datetime import datetime
 import torch
@@ -16,7 +15,7 @@ class DirichletHGM(AgentInterface):
     """
 
     def __init__(
-        self, name, tensorboard_dir, checkpoint_dir, action_selection, n_states, dataset_size,
+        self, n_states, dataset_size, name="", tensorboard_dir="", checkpoint_dir="", action_selection=None,
         W=None, m=None, v=None, β=None, d=None, n_observations=2, n_actions=4, steps_done=0,
         learning_step=0, min_data_points=10, **_
     ):
@@ -152,11 +151,12 @@ class DirichletHGM(AgentInterface):
         # Close the environment.
         env.close()
 
-    def learn(self, debug=True, verbose=False):
+    def learn(self, debug=True, verbose=False, clear=True):
         """
         Perform on step of gradient descent on the encoder and the decoder
         :param debug: whether to display debug information
         :param verbose: whether to display detailed debug information
+        :param clear: whether to clear the data after learning
         """
 
         # Learns the root Gaussian Mixture.
@@ -173,7 +173,8 @@ class DirichletHGM(AgentInterface):
         self.gm.learn(clear=False, debug=debug, verbose=verbose)
 
         # Clear the dataset and increase learning step.
-        self.x.clear()
+        if clear is True:
+            self.x.clear()
         self.learning_step += 1
 
     def combine(self, root):
@@ -254,6 +255,30 @@ class DirichletHGM(AgentInterface):
         :return: the outputs of the encoder, transition, and critic model
         """
         raise Exception("Function 'predict' not implemented in GM agent.")
+
+    @property
+    def r_hat(self):
+        return self.gm.r_hat
+
+    @property
+    def m_hat(self):
+        return self.gm.m_hat
+
+    @property
+    def v_hat(self):
+        return self.gm.v_hat
+
+    @property
+    def W_hat(self):
+        return self.gm.W_hat
+
+    @property
+    def d_hat(self):
+        return self.gm.d_hat
+
+    @property
+    def β_hat(self):
+        return self.gm.β_hat
 
     def save(self, config, final_model=False):
         """
