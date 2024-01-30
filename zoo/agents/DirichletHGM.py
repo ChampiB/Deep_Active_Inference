@@ -1,22 +1,24 @@
-import math
 from os.path import join
+from bigtree import Node
 from zoo.agents.AgentInterface import AgentInterface
+from zoo.agents.DirichletGM import DirichletGM
+from zoo.agents.GM import GM
 from zoo.agents.save.Checkpoint import Checkpoint
 from datetime import datetime
 import torch
 import logging
-from zoo.helpers.GaussianMixture import GaussianMixture
 from zoo.helpers.MatPlotLib import MatPlotLib
 
 
-class GM(AgentInterface):
+class DirichletHGM(AgentInterface):
     """
-    Implement a Gaussian Mixture taking random each action.
+    Implement a Dirichlet Hierarchical Gaussian Mixture taking random each action.
     """
 
     def __init__(
-        self, n_states, dataset_size, name="", tensorboard_dir="", checkpoint_dir="", action_selection=None,
-        W=None, m=None, v=None, β=None, D=None, n_observations=2, n_actions=4, steps_done=0, learning_step=0, **_
+        self, name, tensorboard_dir, checkpoint_dir, action_selection, n_states, dataset_size,
+        W=None, m=None, v=None, β=None, d=None, n_observations=2, n_actions=4, steps_done=0,
+        learning_step=0, min_data_points=10, **_
     ):
         """
         Constructor
@@ -30,13 +32,13 @@ class GM(AgentInterface):
         :param tensorboard_dir: the directory in which tensorboard's files will be written
         :param checkpoint_dir: the directory in which the agent should be saved
         :param steps_done: the number of training iterations performed to date.
-        :param verbose: whether to log weights information such as mean, min and max values of layers' weights
         :param W: the scale matrix of the Wishart prior
         :param v: degree of freedom of the Wishart prior
         :param m: the mean of the prior over μ
         :param β: the scaling coefficient of the precision matrix of the prior over μ
         :param D: the prior probability of the Gaussian components
         :param learning_step: the number of learning steps performed so far
+        :param min_data_points: the minimum number of data points required for a new hierarchical to start
         """
 
         # Call parent constructor.
@@ -53,6 +55,7 @@ class GM(AgentInterface):
         self.n_actions = n_actions
         self.n_states = n_states
         self.n_observations = n_observations
+        self.min_data_points = min_data_points
         self.colors = ['red', 'green', 'blue', 'purple', 'gray', 'pink', 'turquoise', 'orange', 'brown', 'cyan']
 
         # The number of learning steps performed so far.
@@ -61,19 +64,11 @@ class GM(AgentInterface):
         # The dataset used for training.
         self.x = []
 
-        # Gaussian mixture prior parameters.
-        self.W = [torch.ones([n_observations, n_observations]) if W is None else W[k].cpu() for k in range(n_states)]
-        self.m = [torch.zeros([n_observations]) if m is None else m[k].cpu() for k in range(n_states)]
-        self.v = (n_observations - 0.99) * torch.ones([n_states]) if v is None else v.cpu()
-        self.β = torch.ones([n_states]) if β is None else β.cpu()
-        self.D = torch.ones([n_states]) / n_states if D is None else D.cpu()
-
-        # Gaussian mixture posterior parameters.
-        self.W_hat = [torch.ones([n_observations, n_observations]) for _ in range(n_states)]
-        self.m_hat = [torch.ones([n_observations]) for _ in range(n_states)]
-        self.v_hat = (n_observations - 0.99) * torch.ones([n_states])
-        self.β_hat = torch.ones([n_states])
-        self.r_hat = torch.softmax(torch.rand([dataset_size, n_states]), dim=1)
+        # The Gaussian Mixture containing all the components of the Hierarchical Gaussian Mixture.
+        self.gm = DirichletGM(
+            n_states=n_states, dataset_size=dataset_size, n_observations=n_observations, n_actions=n_actions,
+            W=W, m=m, v=v, β=β, d=d, learning_step=learning_step
+        )
 
     def name(self):
         """
@@ -157,103 +152,100 @@ class GM(AgentInterface):
         # Close the environment.
         env.close()
 
-    def learn(self, debug=True, verbose=False, clear=True):
+    def learn(self, debug=True, verbose=False):
         """
         Perform on step of gradient descent on the encoder and the decoder
         :param debug: whether to display debug information
         :param verbose: whether to display detailed debug information
-        :param clear: whether to clear the data after learning
         """
 
-        if self.learning_step == 0:
+        # Learns the root Gaussian Mixture.
+        self.gm.x = self.x
+        self.gm.learn(clear=False, debug=verbose, verbose=verbose)
 
-            # Initialize the parameter of the Gaussian Mixture using the K-means algorithm.
-            self.m, self.m_hat, self.r_hat, self.W_hat, self.W = \
-                GaussianMixture.k_means_init([self.x], self.v, self.v_hat)
+        # Recursively learns all sub Gaussian Mixture.
+        root = Node("gm", gm=self.gm)
+        self.learn_sub_gm(root, debug=verbose, verbose=verbose)
 
-            # Display the result of the k-means algorithm, if needed.
-            if verbose is True:
-                MatPlotLib.draw_gm_graph(
-                    title="After K-means Optimization", params=(self.m_hat, self.v_hat, self.W_hat),
-                    data=self.x, r=self.r_hat, ellipses=False, clusters=True
-                )
-
-        # Display the model's beliefs, if needed.
-        if debug is True or verbose is True:
-            self.draw_beliefs_graphs("Before Optimization")
-
-        # Perform inference.
-        for i in range(20):  # TODO implement a better stopping condition
-
-            # Perform the update for the latent variable Z, and display the model's beliefs (if needed).
-            self.update_for_z()
-            if verbose is True:
-                self.draw_beliefs_graphs(f"[{i}] After Z update")
-
-            # Perform the update for the latent variables μ and Λ, and display the model's beliefs (if needed).
-            self.update_for_μ_and_Λ()
-            if verbose is True:
-                self.draw_beliefs_graphs(f"[{i}] After μ and Λ update")
-
-        # Display the model's beliefs, if needed.
-        if debug is True or verbose is True:
-            self.draw_beliefs_graphs("After Optimization")
-
-        # Perform empirical Bayes.
-        self.W = self.W_hat
-        self.m = self.m_hat
-        self.v = self.v_hat
-        self.β = self.β_hat
+        # Combine all the Gaussian Mixtures in the tree to create the overall Gaussian Mixture.
+        self.gm = self.combine(root)
+        self.gm.x = self.x
+        self.gm.learn(clear=False, debug=debug, verbose=verbose)
 
         # Clear the dataset and increase learning step.
-        if clear is True:
-            self.x.clear()
+        self.x.clear()
         self.learning_step += 1
 
-    def data_of_component(self, k):
-        ks = self.r_hat.argmax(dim=1).tolist()
-        return [x for n, x in enumerate(self.x) if ks[n] == k]
+    def combine(self, root):
 
-    def n_active_components(self):
-        return len(self.active_components)
+        # Retrieve the components of the combined Gaussian Mixture.
+        components = self.find_terminal_components(root)
 
-    @property
-    def active_components(self):
-        return set(self.r_hat.argmax(dim=1).tolist())
+        # Unpack the parameters of the components.
+        params = list(zip(*components))
+        W_hat, m_hat, v_hat, β_hat = [list(param) for param in params]
+        v_hat = torch.stack(v_hat)
+        β_hat = torch.stack(β_hat)
+
+        # Create the combined Gaussian Mixture.
+        gm = DirichletGM(
+            n_states=len(components), dataset_size=self.dataset_size, n_observations=self.n_observations,
+            n_actions=self.n_actions, learning_step=1, W=W_hat, m=m_hat, v=v_hat, β=β_hat
+        )
+        gm.W_hat = W_hat
+        gm.m_hat = m_hat
+        gm.v_hat = v_hat
+        gm.β_hat = β_hat
+        return gm
+
+    def find_terminal_components(self, parent):
+
+        # Initialize the list of terminal components.
+        components = []
+
+        # Retrieve expanded nodes that are terminal.
+        if len(parent.children) == 0:
+            active_ks = parent.gm.active_components
+            for k in active_ks:
+                components.append((parent.gm.W_hat[k], parent.gm.m_hat[k], parent.gm.v_hat[k], parent.gm.β_hat[k]))
+            return components
+
+        # Keep track of active components, and call the function recursively for each child.
+        active_ks = parent.gm.active_components
+        for child in parent.children:
+            active_ks = active_ks.difference({int(child.name)})
+            components.extend(self.find_terminal_components(child))
+
+        # Retrieve non-expanded nodes that are terminal.
+        for k in active_ks:
+            components.append((parent.gm.W_hat[k], parent.gm.m_hat[k], parent.gm.v_hat[k], parent.gm.β_hat[k]))
+
+        return components
+
+    def learn_sub_gm(self, node, debug=True, verbose=False):
+
+        # Check whether to stop the recursion.
+        if node.parent is not None and node.gm.n_active_components() == 1 and node.parent.gm.n_active_components() == 1:
+            return
+
+        for state in range(self.n_states):
+
+            # Retrieving data for the Gaussian Mixture corresponding to the current state.
+            x = node.gm.data_of_component(state)
+            if len(x) < self.min_data_points:
+                continue
+
+            # Learns the Gaussian Mixture corresponding to the current state.
+            sub_gm = DirichletGM(n_states=self.n_states, dataset_size=len(x), n_observations=self.n_observations)
+            sub_gm.x = x
+            sub_gm.learn(clear=False, debug=debug, verbose=verbose)
+            child = Node(str(state), gm=sub_gm, parent=node)
+            self.learn_sub_gm(child, debug=debug, verbose=verbose)
 
     def draw_beliefs_graphs(self, title):
-        params = (self.m_hat, self.v_hat, self.W_hat)
-        MatPlotLib.draw_gm_graph(title=title, params=params, data=self.x, r=self.r_hat)
-        MatPlotLib.draw_gm_graph(title=title, params=params, data=self.x, r=self.r_hat, ellipses=False)
-
-    def update_for_z(self):
-
-        # Compute the non-normalized state probabilities.
-        log_D = GaussianMixture.repeat_across(torch.log(self.D), self.dataset_size, dim=0)
-        log_det = GaussianMixture.expected_log_det_Λ(self.v_hat, self.W_hat, self.dataset_size)
-        quadratic_form = GaussianMixture.expected_quadratic_form(self.x, self.m_hat, self.β_hat, self.v_hat, self.W_hat)
-        log_ρ = log_D - self.n_states / 2 * math.log(2 * math.pi) + 0.5 * log_det - 0.5 * quadratic_form
-
-        # Normalize the state probabilities.
-        self.r_hat = torch.softmax(log_ρ, dim=1)
-
-    def update_for_μ_and_Λ(self):
-        N = torch.sum(self.r_hat, dim=0) + 0.0001
-        x_bar = GaussianMixture.gm_x_bar(self.r_hat, self.x, N)
-
-        self.v_hat = self.v + N
-        self.β_hat = self.β + N
-        self.m_hat = [(self.β[k] * self.m[k] + N[k] * x_bar[k]) / self.β_hat[k] for k in range(self.n_states)]
-        self.W_hat = [self.compute_W_hat(N, k, x_bar) for k in range(self.n_states)]
-
-    def compute_W_hat(self, N, k, x_bar):
-        W_hat = torch.inverse(self.W[k])
-        for n in range(self.dataset_size):
-            x = self.x[n] - x_bar[k]
-            W_hat += self.r_hat[n][k] * torch.outer(x, x)
-        x = x_bar[k] - self.m[k]
-        W_hat += (self.β[k] * N[k] / self.β_hat[k]) * torch.outer(x, x)
-        return torch.inverse(W_hat)
+        params = (self.gm.m_hat, self.gm.v_hat, self.gm.W_hat)
+        MatPlotLib.draw_gm_graph(title=title, params=params, data=self.x, r=self.gm.r_hat)
+        MatPlotLib.draw_gm_graph(title=title, params=params, data=self.x, r=self.gm.r_hat, ellipses=False)
 
     def predict(self, data):
         """
@@ -288,12 +280,13 @@ class GM(AgentInterface):
             "tensorboard_dir": self.tensorboard_dir,
             "checkpoint_dir": self.checkpoint_dir,
             "action_selection": dict(self.action_selection),
-            "W": self.W,
-            "v": self.v,
-            "m": self.m,
-            "β": self.β,
-            "D": self.D,
-            "learning_step": self.learning_step
+            "W": self.gm.W,
+            "v": self.gm.v,
+            "m": self.gm.m,
+            "β": self.gm.β,
+            "d": self.gm.d,
+            "learning_step": self.learning_step,
+            "min_data_points": self.min_data_points
         }, checkpoint_file)
 
     @staticmethod
@@ -319,8 +312,9 @@ class GM(AgentInterface):
             "v": checkpoint["v"],
             "m": checkpoint["m"],
             "β": checkpoint["β"],
-            "D": checkpoint["D"],
-            "learning_step": checkpoint["learning_step"]
+            "d": checkpoint["d"],
+            "learning_step": checkpoint["learning_step"],
+            "min_data_points": checkpoint["min_data_points"]
         }
 
     def draw_reconstructed_images(self, env, grid_size):

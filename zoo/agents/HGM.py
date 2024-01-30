@@ -16,7 +16,7 @@ class HGM(AgentInterface):
 
     def __init__(
         self, name, tensorboard_dir, checkpoint_dir, action_selection, n_states, dataset_size,
-        W=None, m=None, v=None, β=None, D=None, n_observations=2, n_actions=4, steps_done=0, verbose=False,
+        W=None, m=None, v=None, β=None, D=None, n_observations=2, n_actions=4, steps_done=0,
         learning_step=0, min_data_points=10, **_
     ):
         """
@@ -31,7 +31,6 @@ class HGM(AgentInterface):
         :param tensorboard_dir: the directory in which tensorboard's files will be written
         :param checkpoint_dir: the directory in which the agent should be saved
         :param steps_done: the number of training iterations performed to date.
-        :param verbose: whether to log weights information such as mean, min and max values of layers' weights
         :param W: the scale matrix of the Wishart prior
         :param v: degree of freedom of the Wishart prior
         :param m: the mean of the prior over μ
@@ -55,7 +54,6 @@ class HGM(AgentInterface):
         self.n_actions = n_actions
         self.n_states = n_states
         self.n_observations = n_observations
-        self.verbose = verbose  # TODO
         self.min_data_points = min_data_points
         self.colors = ['red', 'green', 'blue', 'purple', 'gray', 'pink', 'turquoise', 'orange', 'brown', 'cyan']
 
@@ -161,12 +159,11 @@ class HGM(AgentInterface):
         """
 
         # Learns the root Gaussian Mixture.
-        gm = GM(n_states=self.n_states, dataset_size=self.dataset_size, n_observations=self.n_observations)
-        gm.x = self.x
-        gm.learn(clear=False, debug=verbose, verbose=verbose)
+        self.gm.x = self.x
+        self.gm.learn(clear=False, debug=verbose, verbose=verbose)
 
         # Recursively learns all sub Gaussian Mixture.
-        root = Node("gm", gm=gm)
+        root = Node("gm", gm=self.gm)
         self.learn_sub_gm(root, debug=verbose, verbose=verbose)
 
         # Combine all the Gaussian Mixtures in the tree to create the overall Gaussian Mixture.

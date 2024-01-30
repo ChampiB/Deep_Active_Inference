@@ -1,0 +1,16 @@
+name: "dirichlet_hgm_${agent.n_states}"
+
+defaults:
+  - action_selection: random
+
+_target_: zoo.agents.DirichletHGM.DirichletHGM
+
+# Miscellaneous
+n_actions: ${environment.n_actions}
+n_states: 6
+n_observations: 2
+dataset_size: 500
+tensorboard_dir: "${tensorboard.directory}"
+checkpoint_dir: "${checkpoint.directory}"
+trainable: True
+verbose: False

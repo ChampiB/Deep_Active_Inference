@@ -16,7 +16,7 @@ class TGM(AgentInterface):
 
     def __init__(
         self, name, tensorboard_dir, checkpoint_dir, action_selection, n_states, dataset_size,
-        W=None, m=None, v=None, β=None, D=None, B=None, n_observations=2, n_actions=4, steps_done=0, verbose=False,
+        W=None, m=None, v=None, β=None, D=None, B=None, n_observations=2, n_actions=4, steps_done=0,
         learning_step=0, **_
     ):
         """
@@ -54,7 +54,6 @@ class TGM(AgentInterface):
         self.n_actions = n_actions
         self.n_states = n_states
         self.n_observations = n_observations
-        self.verbose = verbose
         self.colors = ['red', 'green', 'blue', 'purple', 'gray', 'pink', 'turquoise', 'orange', 'brown', 'cyan']
 
         # The number of learning steps performed so far.

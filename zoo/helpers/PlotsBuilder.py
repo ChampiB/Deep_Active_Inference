@@ -80,9 +80,6 @@ class PlotsBuilder:
             if k not in active_components:
                 continue
             color = self.colors[k]
-            print("ell[W_hat]: ", W_hat)
-            print("ell[m_hat]: ", m_hat)
-            print("ell[v_hat]: ", v_hat)
 
             covariances = torch.inverse(v_hat[k] * W_hat[k])
             v, w = np.linalg.eigh(covariances)

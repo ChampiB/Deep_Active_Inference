@@ -16,9 +16,8 @@ class DirichletGM(AgentInterface):
     """
 
     def __init__(
-        self, name, tensorboard_dir, checkpoint_dir, action_selection, n_states, dataset_size,
-        W=None, m=None, v=None, β=None, d=None, n_observations=2, n_actions=4, steps_done=0, verbose=False,
-        learning_step=0, **_
+        self, n_states, dataset_size, action_selection=None, name="", tensorboard_dir="", checkpoint_dir="",
+        W=None, m=None, v=None, β=None, d=None, n_observations=2, n_actions=4, steps_done=0, learning_step=0, **_
     ):
         """
         Constructor
@@ -54,7 +53,6 @@ class DirichletGM(AgentInterface):
         self.n_actions = n_actions
         self.n_states = n_states
         self.n_observations = n_observations
-        self.verbose = verbose
         self.colors = ['red', 'green', 'blue', 'purple', 'gray', 'pink', 'turquoise', 'orange', 'brown', 'cyan']
         if n_states > 10:
             self.colors = list(mcolors.CSS4_COLORS.keys())
@@ -162,11 +160,12 @@ class DirichletGM(AgentInterface):
         # Close the environment.
         env.close()
 
-    def learn(self, debug=True, verbose=False):
+    def learn(self, debug=True, verbose=False, clear=True):
         """
         Perform on step of gradient descent on the encoder and the decoder
         :param debug: whether to display debug information
         :param verbose: whether to display detailed debug information
+        :param clear: whether to clear the data after learning
         """
 
         if self.learning_step == 0:
@@ -215,8 +214,20 @@ class DirichletGM(AgentInterface):
         self.β = self.β_hat
 
         # Clear the dataset and increase learning step.
-        self.x.clear()
+        if clear is True:
+            self.x.clear()
         self.learning_step += 1
+
+    def data_of_component(self, k):
+        ks = self.r_hat.argmax(dim=1).tolist()
+        return [x for n, x in enumerate(self.x) if ks[n] == k]
+
+    def n_active_components(self):
+        return len(self.active_components)
+
+    @property
+    def active_components(self):
+        return set(self.r_hat.argmax(dim=1).tolist())
 
     def draw_beliefs_graphs(self, title):
         params = (self.m_hat, self.v_hat, self.W_hat)

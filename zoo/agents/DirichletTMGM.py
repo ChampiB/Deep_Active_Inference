@@ -16,7 +16,7 @@ class DirichletTMGM(AgentInterface):
 
     def __init__(
         self, name, tensorboard_dir, checkpoint_dir, action_selection, n_states, dataset_size,
-        W=None, m=None, v=None, β=None, d=None, b=None, n_observations=2, n_actions=4, steps_done=0, verbose=False,
+        W=None, m=None, v=None, β=None, d=None, b=None, n_observations=2, n_actions=4, steps_done=0,
         learning_step=0, **_
     ):
         """
@@ -30,7 +30,6 @@ class DirichletTMGM(AgentInterface):
         :param tensorboard_dir: the directory in which tensorboard's files will be written
         :param checkpoint_dir: the directory in which the agent should be saved
         :param steps_done: the number of training iterations performed to date.
-        :param verbose: whether to log weights information such as mean, min and max values of layers' weights
         :param W: the scale matrix of the Wishart prior
         :param v: degree of freedom of the Wishart prior
         :param m: the mean of the prior over μ
@@ -54,7 +53,6 @@ class DirichletTMGM(AgentInterface):
         self.n_actions = n_actions
         self.n_states = n_states
         self.n_observations = n_observations
-        self.verbose = verbose
         self.colors = ['red', 'green', 'blue', 'purple', 'gray', 'pink', 'turquoise', 'orange', 'brown', 'cyan']
 
         # The number of learning steps performed so far.
