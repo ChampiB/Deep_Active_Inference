@@ -1,3 +1,4 @@
+from matplotlib import pyplot as plt
 import copy
 from os.path import join
 from zoo.agents.AgentInterface import AgentInterface
@@ -177,8 +178,8 @@ class DirichletTMHGM(AgentInterface):
                 self.learn(env)
 
             # Save the agent (if needed).
-            if self.steps_done % config.checkpoint.frequency == 0:
-                self.save(config)
+            # TODO if self.steps_done % config.checkpoint.frequency == 0:
+            # TODO     self.save(config)
 
             # Log the reward (if needed).
             if self.writer is not None:
@@ -274,6 +275,10 @@ class DirichletTMHGM(AgentInterface):
         new_gm.β_hat = copy.deepcopy(gm.β_hat)
         new_gm.d_hat = copy.deepcopy(gm.d_hat)
         return new_gm
+
+    def skip_graphs(self, x):
+        self.skip = True
+        plt.close('all')
 
     def draw_beliefs_graphs(self, action_names, title, skip_fc=None):
         MatPlotLib.draw_dirichlet_tmhgm_graph(
