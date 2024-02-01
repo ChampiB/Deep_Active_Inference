@@ -2,6 +2,8 @@ import gc
 import math
 import matplotlib.pyplot as plt
 import torch
+from matplotlib.widgets import Button
+
 from zoo.helpers.PlotsBuilder import PlotsBuilder
 
 
@@ -55,7 +57,7 @@ class MatPlotLib:
         MatPlotLib.close()
 
     @staticmethod
-    def draw_gm_graph(params, data, r, title="", clusters=False, ellipses=True):
+    def draw_gm_graph(params, data, r, title="", clusters=False, ellipses=True, skip_fc=None):
         """
         Draw the Gaussian Mixture graph
         :param params: a 3-tuples of the form (m_hat, v_hat, W_hat)
@@ -64,12 +66,23 @@ class MatPlotLib:
         :param title: the title of the figure
         :param clusters: whether to draw the cluster centers
         :param ellipses: whether to draw the ellipses
+        :param skip_fc: the function to call when the skip button is clicked
         """
+
+        # Draw the plots.
         plots = PlotsBuilder(title, n_cols=2)
         plots.draw_gaussian_mixture(
             title="Observation at t = 0", data=data, r=r, params=params, clusters=clusters, ellipses=ellipses
         )
         plots.draw_responsibility_histograms(title="Responsibilities at t = 0", r=r)
+
+        # Add the skip button.
+        if skip_fc is not None:
+            plt.gcf().add_axes([0.97, 0.97, 0.02, 0.02])
+            b_next = Button(plt.gca(), 'Skip', color="limegreen", hovercolor="forestgreen")
+            b_next.on_clicked(skip_fc)
+
+        # Display the graph.
         plots.show()
 
     @staticmethod
@@ -114,7 +127,7 @@ class MatPlotLib:
 
     @staticmethod
     def draw_dirichlet_tmhgm_graph(
-        action_names, params0, params1, x0, x1, a0, r, title="", clusters=False, ellipses=True
+        action_names, params0, params1, x0, x1, a0, r, b_hat, title="", clusters=False, ellipses=True, skip_fc=None
     ):
         """
         Draw the Temporal Gaussian Mixture graph
@@ -125,16 +138,18 @@ class MatPlotLib:
         :param x0: the data points at time step zero
         :param x1: the data points at time step one
         :param r: the responsibilities for all data points at time steps zero and one
+        :param b_hat: the non-normalized counts of the transition
         :param title: the title of the figure
         :param clusters: whether to draw the cluster centers
         :param ellipses: whether to draw the ellipses
+        :param skip_fc: the function to call when the skip button is clicked
         """
 
         # Retrieve the number of actions.
         n_actions = len(action_names)
 
         # Create the plot builder.
-        plots = PlotsBuilder(title, n_rows=1 + math.ceil(n_actions / 4.0), n_cols=4)
+        plots = PlotsBuilder(title, n_rows=1 + 2 * math.ceil(n_actions / 4.0), n_cols=4)
 
         # Draw the model's beliefs.
         plots.draw_gaussian_mixture(
@@ -151,6 +166,16 @@ class MatPlotLib:
         # Draw the transition graph for each action.
         for action in range(n_actions):
             plots.draw_transition_graph(action, a0, r, title=f"Transition for action = {action_names[action]}")
+
+        # Draw the transition matrix for each action.
+        for action in range(n_actions):
+            plots.draw_matrix(b_hat[action], title=f"Transition matrix for action = {action_names[action]}")
+
+        # Add the skip button.
+        if skip_fc is not None:
+            plt.gcf().add_axes([0.97, 0.97, 0.02, 0.02])
+            b_next = Button(plt.gca(), 'Skip', color="limegreen", hovercolor="forestgreen")
+            b_next.on_clicked(skip_fc)
 
         # Show all the plots.
         plots.show()

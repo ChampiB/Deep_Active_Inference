@@ -1,3 +1,4 @@
 _target_: zoo.agents.actions.SoftmaxActionSelection.SoftmaxActionSelection
 
 name: "softmax"
+temperature: 1.0

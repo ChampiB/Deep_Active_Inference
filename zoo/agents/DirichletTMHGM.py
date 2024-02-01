@@ -3,6 +3,7 @@ from os.path import join
 from zoo.agents.AgentInterface import AgentInterface
 from zoo.agents.DirichletGM import DirichletGM
 from zoo.agents.DirichletHGM import DirichletHGM
+from zoo.agents.planning.MCTS import MCTS
 from zoo.agents.save.Checkpoint import Checkpoint
 from datetime import datetime
 import torch
@@ -17,8 +18,8 @@ class DirichletTMHGM(AgentInterface):
     """
 
     def __init__(
-        self, name, tensorboard_dir, checkpoint_dir, action_selection, n_states, dataset_size,
-        W=None, m=None, v=None, β=None, d=None, b=None, n_observations=2, n_actions=4, steps_done=0,
+        self, name, tensorboard_dir, checkpoint_dir, action_selection, n_states, dataset_size, max_planning_steps,
+        exp_const, W=None, m=None, v=None, β=None, d=None, b=None, n_observations=2, n_actions=4, steps_done=0,
         learning_step=0, min_data_points=10, **_
     ):
         """
@@ -32,6 +33,8 @@ class DirichletTMHGM(AgentInterface):
         :param tensorboard_dir: the directory in which tensorboard's files will be written
         :param checkpoint_dir: the directory in which the agent should be saved
         :param steps_done: the number of training iterations performed to date.
+        :param max_planning_steps: the maximum number of planning iterations to perform during planning
+        :param exp_const: the exploration constant of the MCTS algorythm
         :param W: the scale matrix of the Wishart prior
         :param v: degree of freedom of the Wishart prior
         :param m: the mean of the prior over μ
@@ -56,8 +59,15 @@ class DirichletTMHGM(AgentInterface):
         self.n_actions = n_actions
         self.n_states = n_states
         self.n_observations = n_observations
+        self.skip = False
         self.colors = ['red', 'green', 'blue', 'purple', 'gray', 'pink', 'turquoise', 'orange', 'brown', 'cyan']
         self.min_data_points = min_data_points
+        self.max_planning_steps = max_planning_steps
+        self.exp_const = exp_const
+        self.mcts = MCTS(exp_const, max_planning_steps, n_actions, self.predict_next_state, self.efe)
+        self.n_state_visits = torch.ones([n_states])
+        self.target_state = torch.softmax(-self.n_state_visits, dim=0)
+        self.target_temperature = 5
 
         # The number of learning steps performed so far.
         self.learning_step = learning_step
@@ -69,11 +79,12 @@ class DirichletTMHGM(AgentInterface):
 
         # The Dirichlet Hierarchical Gaussian Mixture to use for the perception model at time step 1.
         self.gm1 = DirichletHGM(
+            name="GM_1",
             n_states=n_states, dataset_size=dataset_size, W=W, m=m, v=v, β=β, d=d, min_data_points=min_data_points
         )
 
         # The Dirichlet Gaussian Mixture to use for the perception model at time step 1.
-        self.gm0 = DirichletGM(n_states=n_states, dataset_size=dataset_size, W=W, m=m, v=v, β=β, d=d)
+        self.gm0 = DirichletGM(name="GM_0", n_states=n_states, dataset_size=dataset_size, W=W, m=m, v=v, β=β, d=d)
 
         # Prior parameters.
         self.b = torch.ones([n_actions, n_states, n_states]) * 0.2 if b is None else b.cpu()
@@ -81,6 +92,9 @@ class DirichletTMHGM(AgentInterface):
         # Posterior parameters.
         self.r_hat = [torch.softmax(torch.rand([dataset_size, n_states]), dim=1) for _ in range(2)]
         self.b_hat = torch.ones([n_actions, n_states, n_states]) * 0.2
+
+        # The mean transition matrix.
+        self.B = self.compute_B()
 
     def name(self):
         """
@@ -110,8 +124,27 @@ class DirichletTMHGM(AgentInterface):
         :return: the random action
         """
 
-        # Select a random action.
-        return self.action_selection.select(torch.zeros([1, self.n_actions]), self.steps_done)
+        # Perform inference.
+        state = self.gm1.compute_responsibility(obs)
+
+        # Perform planning.
+        quality = self.mcts.step(state)
+
+        # Select an action.
+        return self.action_selection.select(quality, self.steps_done)
+
+    def compute_B(self):
+        b = self.b_hat
+        b_sum = b.sum(dim=1).unsqueeze(dim=1).repeat((1, b.shape[1], 1))
+        b /= b_sum
+        return b
+
+    def predict_next_state(self, node, action):
+        return torch.matmul(self.B[action], node.state.squeeze())
+
+    def efe(self, node):
+        risk_over_states = node.state * (node.state.log() - self.target_state.log())
+        return risk_over_states.sum()
 
     def train(self, env, config):
         """
@@ -167,7 +200,7 @@ class DirichletTMHGM(AgentInterface):
         # Close the environment.
         env.close()
 
-    def learn(self, env, debug=True, verbose=False):
+    def learn(self, env, debug=True, verbose=True):
         """
         Perform on step of gradient descent on the encoder and the decoder
         :param env: the environment on which the agent is trained
@@ -177,7 +210,7 @@ class DirichletTMHGM(AgentInterface):
 
         # Fit the perception models.
         self.gm1.x = self.x1
-        self.gm1.learn(clear=False, verbose=verbose, debug=verbose)
+        self.gm1.learn(clear=False, debug=verbose, verbose=verbose)
         self.gm0 = self.copy_gm(self.gm1.gm)
         self.gm0.x = self.x0
         self.gm0.learn_z_and_d(verbose=verbose, debug=verbose)
@@ -186,21 +219,37 @@ class DirichletTMHGM(AgentInterface):
         self.r_hat[0] = self.gm0.r_hat
         self.r_hat[1] = self.gm1.r_hat
 
+        # Compute number of visits.
+        self.n_state_visits = self.r_hat[1].sum(dim=0)
+        self.target_state = -self.target_temperature * self.n_state_visits / self.n_state_visits.sum()
+        self.target_state = torch.softmax(self.target_state, dim=0) + 0.0001
+
+        # Ensure the transition matrix has the right size.
+        self.b = torch.ones([self.n_actions, self.gm1.n_states, self.gm0.n_states])
+        self.b_hat = torch.ones([self.n_actions, self.gm1.n_states, self.gm0.n_states])
+
         # Display the model's beliefs, if needed.
         if debug is True or verbose is True:
-            self.draw_beliefs_graphs(env.action_names, "Before Optimization")
+            self.draw_beliefs_graphs(
+                env.action_names, f"[{self.agent_name}]: Before Optimization"
+            )
 
         # Perform inference on the prediction model.
+        self.skip = False
         for i in range(20):  # TODO implement a better stopping condition
 
             # Perform the update for the latent variable B, and display the model's beliefs (if needed).
             self.update_for_b()
-            if verbose is True:
-                self.draw_beliefs_graphs(env.action_names, f"[{i}] After B update")
+            if verbose is True and self.skip is False:
+                self.draw_beliefs_graphs(
+                    env.action_names, f"[{self.agent_name}, inference step = {i}] After B update",
+                    skip_fc=self.skip_graphs
+                )
+        self.skip = False
 
         # Display the model's beliefs, if needed.
         if debug is True or verbose is True:
-            self.draw_beliefs_graphs(env.action_names, "After Optimization")
+            self.draw_beliefs_graphs(env.action_names, f"[{self.agent_name}]: After Optimization")
 
         # Perform empirical Bayes.
         self.b = self.b_hat
@@ -211,8 +260,9 @@ class DirichletTMHGM(AgentInterface):
         self.a0.clear()
         self.learning_step += 1
 
-    def copy_gm(self, gm):
-        new_gm = DirichletGM(n_states=gm.n_states, dataset_size=gm.dataset_size)
+    @staticmethod
+    def copy_gm(gm):
+        new_gm = DirichletGM(name="GM_0", n_states=gm.n_states, dataset_size=gm.dataset_size)
         new_gm.W = copy.deepcopy(gm.W)
         new_gm.m = copy.deepcopy(gm.m)
         new_gm.v = copy.deepcopy(gm.v)
@@ -225,24 +275,26 @@ class DirichletTMHGM(AgentInterface):
         new_gm.d_hat = copy.deepcopy(gm.d_hat)
         return new_gm
 
-    def draw_beliefs_graphs(self, action_names, title):
+    def draw_beliefs_graphs(self, action_names, title, skip_fc=None):
         MatPlotLib.draw_dirichlet_tmhgm_graph(
             action_names=action_names, title=title,
             params0=(self.gm1.m_hat, self.gm1.v_hat, self.gm1.W_hat),
             params1=(self.gm1.m_hat, self.gm1.v_hat, self.gm1.W_hat),
-            x0=self.x0, x1=self.x1, a0=self.a0, r=self.r_hat
+            x0=self.x0, x1=self.x1, a0=self.a0, r=self.r_hat, b_hat=self.b_hat, skip_fc=self.skip_graphs
         )
-        MatPlotLib.draw_dirichlet_tmhgm_graph(
-            action_names=action_names, title=title,
-            params0=(self.gm1.m_hat, self.gm1.v_hat, self.gm1.W_hat),
-            params1=(self.gm1.m_hat, self.gm1.v_hat, self.gm1.W_hat),
-            x0=self.x0, x1=self.x1, a0=self.a0, r=self.r_hat,
-            ellipses=False
-        )
+        if skip_fc is None or self.skip is False:
+            MatPlotLib.draw_dirichlet_tmhgm_graph(
+                action_names=action_names, title=title,
+                params0=(self.gm1.m_hat, self.gm1.v_hat, self.gm1.W_hat),
+                params1=(self.gm1.m_hat, self.gm1.v_hat, self.gm1.W_hat),
+                x0=self.x0, x1=self.x1, a0=self.a0, r=self.r_hat, b_hat=self.b_hat,
+                ellipses=False, skip_fc=self.skip_graphs
+            )
 
     def update_for_b(self):
         a = torch.nn.functional.one_hot(torch.tensor(self.a0))
         self.b_hat = self.b + torch.einsum("na, nj, nk -> ajk", a, self.r_hat[1], self.r_hat[0])
+        self.B = self.compute_B()
 
     def predict(self, data):
         """
@@ -284,7 +336,9 @@ class DirichletTMHGM(AgentInterface):
             "d": self.gm1.d_hat,
             "b": self.b_hat,
             "learning_step": self.learning_step,
-            "min_data_points": self.min_data_points
+            "min_data_points": self.min_data_points,
+            "max_planning_steps": self.max_planning_steps,
+            "exp_const": self.exp_const,
         }, checkpoint_file)
 
     @staticmethod
@@ -313,7 +367,9 @@ class DirichletTMHGM(AgentInterface):
             "d": checkpoint["d"],
             "b": checkpoint["b"],
             "learning_step": checkpoint["learning_step"],
-            "min_data_points": checkpoint["min_data_points"]
+            "min_data_points": checkpoint["min_data_points"],
+            "max_planning_steps": checkpoint["max_planning_steps"],
+            "exp_const": checkpoint["exp_const"]
         }
 
     def draw_reconstructed_images(self, env, grid_size):

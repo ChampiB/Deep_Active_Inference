@@ -1,3 +1,4 @@
+import math
 from os.path import join
 from bigtree import Node
 from zoo.agents.AgentInterface import AgentInterface
@@ -6,6 +7,8 @@ from zoo.agents.save.Checkpoint import Checkpoint
 from datetime import datetime
 import torch
 import logging
+
+from zoo.helpers.GaussianMixture import GaussianMixture
 from zoo.helpers.MatPlotLib import MatPlotLib
 
 
@@ -66,7 +69,7 @@ class DirichletHGM(AgentInterface):
         # The Gaussian Mixture containing all the components of the Hierarchical Gaussian Mixture.
         self.gm = DirichletGM(
             n_states=n_states, dataset_size=dataset_size, n_observations=n_observations, n_actions=n_actions,
-            W=W, m=m, v=v, β=β, d=d, learning_step=learning_step
+            W=W, m=m, v=v, β=β, d=d, learning_step=learning_step, name="Initial GM"
         )
 
     def name(self):
@@ -169,6 +172,7 @@ class DirichletHGM(AgentInterface):
 
         # Combine all the Gaussian Mixtures in the tree to create the overall Gaussian Mixture.
         self.gm = self.combine(root)
+        self.n_states = self.gm.n_states
         self.gm.x = self.x
         self.gm.learn(clear=False, debug=debug, verbose=verbose)
 
@@ -190,7 +194,7 @@ class DirichletHGM(AgentInterface):
 
         # Create the combined Gaussian Mixture.
         gm = DirichletGM(
-            n_states=len(components), dataset_size=self.dataset_size, n_observations=self.n_observations,
+            name="Combined GM_0", n_states=len(components), dataset_size=self.dataset_size, n_observations=self.n_observations,
             n_actions=self.n_actions, learning_step=1, W=W_hat, m=m_hat, v=v_hat, β=β_hat
         )
         gm.W_hat = W_hat
@@ -237,7 +241,9 @@ class DirichletHGM(AgentInterface):
                 continue
 
             # Learns the Gaussian Mixture corresponding to the current state.
-            sub_gm = DirichletGM(n_states=self.n_states, dataset_size=len(x), n_observations=self.n_observations)
+            sub_gm = DirichletGM(
+                name="Sub-GM", n_states=self.n_states, dataset_size=len(x), n_observations=self.n_observations
+            )
             sub_gm.x = x
             sub_gm.learn(clear=False, debug=debug, verbose=verbose)
             child = Node(str(state), gm=sub_gm, parent=node)
@@ -247,6 +253,21 @@ class DirichletHGM(AgentInterface):
         params = (self.gm.m_hat, self.gm.v_hat, self.gm.W_hat)
         MatPlotLib.draw_gm_graph(title=title, params=params, data=self.x, r=self.gm.r_hat)
         MatPlotLib.draw_gm_graph(title=title, params=params, data=self.x, r=self.gm.r_hat, ellipses=False)
+
+    def compute_responsibility(self, obs):
+        # TODO remove code duplication
+
+        # Compute the non-normalized state probabilities.
+        log_D = GaussianMixture.expected_log_D(self.gm.d, 1)
+        log_det = GaussianMixture.expected_log_det_Λ(self.gm.v_hat, self.gm.W_hat, 1)
+        quadratic_form = GaussianMixture.expected_quadratic_form(
+            [obs], self.gm.m_hat, self.gm.β_hat, self.gm.v_hat, self.gm.W_hat
+        )
+        log_ρ = torch.zeros([1, self.n_states])
+        log_ρ += log_D - self.n_states / 2 * math.log(2 * math.pi) + 0.5 * log_det - 0.5 * quadratic_form
+
+        # Normalize the state probabilities.
+        return torch.softmax(log_ρ, dim=1)
 
     def predict(self, data):
         """

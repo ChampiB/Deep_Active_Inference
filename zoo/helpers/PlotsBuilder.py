@@ -1,4 +1,3 @@
-import numpy
 from matplotlib import colors
 import matplotlib.image as mpimg
 from io import BytesIO
@@ -145,6 +144,19 @@ class PlotsBuilder:
         sio.seek(0)
         img = mpimg.imread(sio)
         self.current_axis.imshow(img)
+
+        # Move to the next axis.
+        self.current_plot_index += 1
+
+    def draw_matrix(self, matrix, title=""):
+
+        # Set the subplot title.
+        self.current_axis.set_title(title)
+
+        # Draw the matrix passed as parameters.
+        plt.sca(self.current_axis)
+        axis_img = plt.matshow(matrix, fignum=0)
+        plt.colorbar(axis_img)
 
         # Move to the next axis.
         self.current_plot_index += 1

@@ -7,8 +7,8 @@ class SoftmaxActionSelection:
     Class that samples an action from a softmax function over the actions' quality.
     """
 
-    def __init__(self, **_):
-        pass
+    def __init__(self, temperature, **_):
+        self.temperature = temperature
 
     def __iter__(self):
         """
@@ -17,7 +17,8 @@ class SoftmaxActionSelection:
         """
         for key, value in {
             "module": str(self.__module__),
-            "class": str(self.__class__.__name__)
+            "class": str(self.__class__.__name__),
+            "temperature": self.temperature
         }.items():
             yield key, value
 
@@ -28,4 +29,4 @@ class SoftmaxActionSelection:
         :param steps_done: the number of steps performed in the environment to date
         :return: the selected action
         """
-        return Categorical(softmax(quality, dim=1)).sample()
+        return Categorical(softmax(self.temperature * quality, dim=1)).sample()

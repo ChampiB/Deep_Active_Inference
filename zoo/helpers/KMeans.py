@@ -37,11 +37,14 @@ class KMeans:
     @staticmethod
     def precision(x, r):
         precision = []
-        for k in range(r.shape[1]):
+        n_states = r.shape[1]
+        for k in range(n_states):
             x_k = [torch.unsqueeze(x[n], dim=0) for n in range(len(x)) if r[n][k] == 1]
-            if len(x_k) >= 2:
-                x_k = torch.concat(x_k, dim=0).t()
+            x_k = torch.concat(x_k, dim=0).t() if len(x_k) != 0 else torch.tensor([[]])
+            if x_k.shape[1] >= n_states:
                 precision.append(torch.inverse(torch.cov(x_k)))
             else:
-                precision.append(torch.eye(x[0].shape[0]))
+                epsilon = 0.00001
+                var = torch.var(x_k, dim=1) + epsilon if x_k.shape[1] >= 2 else epsilon
+                precision.append(torch.inverse(torch.eye(x[0].shape[0]) * var))
         return precision

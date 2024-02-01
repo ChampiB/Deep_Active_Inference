@@ -1,16 +1,18 @@
 name: "dirichlet_tmhgm_${agent.n_states}"
 
 defaults:
-  - action_selection: random
+  - action_selection: softmax
 
 _target_: zoo.agents.DirichletTMHGM.DirichletTMHGM
 
 # Miscellaneous
 n_actions: ${environment.n_actions}
-n_states: 6
+n_states: 8
 n_observations: 2
 dataset_size: 500
 tensorboard_dir: "${tensorboard.directory}"
 checkpoint_dir: "${checkpoint.directory}"
 trainable: True
 min_data_points: 10
+max_planning_steps: 100
+exp_const: 0.5

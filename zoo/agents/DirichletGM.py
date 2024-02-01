@@ -8,6 +8,7 @@ import logging
 from zoo.helpers.GaussianMixture import GaussianMixture
 import matplotlib.colors as mcolors
 from zoo.helpers.MatPlotLib import MatPlotLib
+from matplotlib import pyplot as plt
 
 
 class DirichletGM(AgentInterface):
@@ -53,6 +54,7 @@ class DirichletGM(AgentInterface):
         self.n_actions = n_actions
         self.n_states = n_states
         self.n_observations = n_observations
+        self.skip = False
         self.colors = ['red', 'green', 'blue', 'purple', 'gray', 'pink', 'turquoise', 'orange', 'brown', 'cyan']
         if n_states > 10:
             self.colors = list(mcolors.CSS4_COLORS.keys())
@@ -64,14 +66,14 @@ class DirichletGM(AgentInterface):
         self.x = []
 
         # Prior parameters.
-        self.W = [torch.ones([n_observations, n_observations]) if W is None else W[k].cpu() for k in range(n_states)]
+        self.W = [torch.eye(n_observations) if W is None else W[k].cpu() for k in range(n_states)]
         self.m = [torch.zeros([n_observations]) if m is None else m[k].cpu() for k in range(n_states)]
         self.v = (n_observations - 0.99) * torch.ones([n_states]) if v is None else v.cpu()
         self.β = torch.ones([n_states]) if β is None else β.cpu()
         self.d = torch.ones([n_states]) if d is None else d.cpu()
 
         # Posterior parameters.
-        self.W_hat = [torch.ones([n_observations, n_observations]) for _ in range(n_states)]
+        self.W_hat = [torch.eye(n_observations) for _ in range(n_states)]
         self.m_hat = [torch.ones([n_observations]) for _ in range(n_states)]
         self.v_hat = (n_observations - 0.99) * torch.ones([n_states])
         self.β_hat = torch.ones([n_states])
@@ -183,29 +185,37 @@ class DirichletGM(AgentInterface):
 
         # Display the model's beliefs, if needed.
         if debug is True or verbose is True:
-            self.draw_beliefs_graphs("Before Optimization")
+            self.draw_beliefs_graphs(f"[{self.agent_name}]: Before Optimization")
 
         # Perform inference.
+        self.skip = False
         for i in range(20):  # TODO implement a better stopping condition
 
             # Perform the update for the latent variable D, and display the model's beliefs (if needed).
             self.update_for_d()
-            if verbose is True:
-                self.draw_beliefs_graphs(f"[{i}] After D update")
+            if verbose is True and self.skip is False:
+                self.draw_beliefs_graphs(
+                    f"[{self.agent_name}, inference step = {i}] After D update", skip_fc=self.skip_graphs
+                )
 
             # Perform the update for the latent variable Z, and display the model's beliefs (if needed).
             self.update_for_z()
-            if verbose is True:
-                self.draw_beliefs_graphs(f"[{i}] After Z update")
+            if verbose is True and self.skip is False:
+                self.draw_beliefs_graphs(
+                    f"[{self.agent_name}, inference step = {i}] After Z update", skip_fc=self.skip_graphs
+                )
 
             # Perform the update for the latent variables μ and Λ, and display the model's beliefs (if needed).
             self.update_for_μ_and_Λ()
-            if verbose is True:
-                self.draw_beliefs_graphs(f"[{i}] After μ and Λ update")
+            if verbose is True and self.skip is False:
+                self.draw_beliefs_graphs(
+                    f"[{self.agent_name}, inference step = {i}] After μ and Λ update", skip_fc=self.skip_graphs
+                )
+        self.skip = False
 
         # Display the model's beliefs, if needed.
         if debug is True or verbose is True:
-            self.draw_beliefs_graphs("After Optimization")
+            self.draw_beliefs_graphs(f"[{self.agent_name}]: After Optimization")
 
         # Perform empirical Bayes.
         self.W = self.W_hat
@@ -223,24 +233,34 @@ class DirichletGM(AgentInterface):
 
         # Display the model's beliefs, if needed.
         if debug is True or verbose is True:
-            self.draw_beliefs_graphs("Before Optimization")
+            self.draw_beliefs_graphs(f"[{self.agent_name}]: Before Optimization")
 
         # Perform inference.
+        self.skip = False
         for i in range(20):  # TODO implement a better stopping condition
 
             # Perform the update for the latent variable D, and display the model's beliefs (if needed).
             self.update_for_d()
             if verbose is True:
-                self.draw_beliefs_graphs(f"[{i}] After D update")
+                self.draw_beliefs_graphs(
+                    f"[{self.agent_name}, inference step = {i}] After D update", skip_fc=self.skip_graphs
+                )
 
             # Perform the update for the latent variable Z, and display the model's beliefs (if needed).
             self.update_for_z()
             if verbose is True:
-                self.draw_beliefs_graphs(f"[{i}] After Z update")
+                self.draw_beliefs_graphs(
+                    f"[{self.agent_name}, inference step = {i}] After Z update", skip_fc=self.skip_graphs
+                )
+        self.skip = False
 
         # Display the model's beliefs, if needed.
         if debug is True or verbose is True:
-            self.draw_beliefs_graphs("After Optimization")
+            self.draw_beliefs_graphs(f"[{self.agent_name}]: After Optimization")
+
+    def skip_graphs(self, x):
+        self.skip = True
+        plt.close('all')
 
     def data_of_component(self, k):
         ks = self.r_hat.argmax(dim=1).tolist()
@@ -253,10 +273,14 @@ class DirichletGM(AgentInterface):
     def active_components(self):
         return set(self.r_hat.argmax(dim=1).tolist())
 
-    def draw_beliefs_graphs(self, title):
+    def draw_beliefs_graphs(self, title, skip_fc=None):
         params = (self.m_hat, self.v_hat, self.W_hat)
-        MatPlotLib.draw_gm_graph(title=title, params=params, data=self.x, r=self.r_hat)
-        MatPlotLib.draw_gm_graph(title=title, params=params, data=self.x, r=self.r_hat, ellipses=False)
+        if skip_fc is None or self.skip is False:
+            MatPlotLib.draw_gm_graph(title=title, params=params, data=self.x, r=self.r_hat, skip_fc=skip_fc)
+        if skip_fc is None or self.skip is False:
+            MatPlotLib.draw_gm_graph(
+                title=title, params=params, data=self.x, r=self.r_hat, ellipses=False, skip_fc=skip_fc
+            )
 
     def update_for_d(self):
         self.d_hat = self.d + self.r_hat.sum(dim=0)

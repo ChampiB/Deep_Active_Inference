@@ -1,9 +1,7 @@
 import copy
 import numpy as np
-import gym
 from gym import spaces
 import torch
-
 from zoo.environments.EnvInterface import EnvInterface
 
 
