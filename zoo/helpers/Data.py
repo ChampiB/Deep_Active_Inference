@@ -23,7 +23,7 @@ class Data:
         # Generates some experiences.
         for i in range(0, capacity):
             obs = env.reset()
-            action = np.random.choice(env.action_space.n)
+            action = np.random.choice(env.action_space.N)
             next_obs, reward, done, _ = env.step(action)
             buffer.append(Experience(obs, action, reward, done, next_obs))
 

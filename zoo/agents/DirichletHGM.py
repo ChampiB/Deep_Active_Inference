@@ -55,10 +55,10 @@ class DirichletHGM(AgentInterface):
         self.checkpoint_dir = checkpoint_dir
         self.action_selection = action_selection
         self.n_actions = n_actions
+        self.initial_n_states = n_states
         self.n_states = n_states
         self.n_observations = n_observations
         self.min_data_points = min_data_points
-        self.colors = ['red', 'green', 'blue', 'purple', 'gray', 'pink', 'turquoise', 'orange', 'brown', 'cyan']
 
         # The number of learning steps performed so far.
         self.learning_step = learning_step
@@ -184,17 +184,18 @@ class DirichletHGM(AgentInterface):
     def combine(self, root):
 
         # Retrieve the components of the combined Gaussian Mixture.
-        components = self.find_terminal_components(root)
+        components = self.find_terminal_components(root, is_root=True)
 
         # Unpack the parameters of the components.
         params = list(zip(*components))
-        W_hat, m_hat, v_hat, β_hat = [list(param) for param in params]
+        W_hat, m_hat, v_hat, β_hat, d_hat = [list(param) for param in params]
         v_hat = torch.stack(v_hat)
         β_hat = torch.stack(β_hat)
 
         # Create the combined Gaussian Mixture.
         gm = DirichletGM(
-            name="Combined GM_0", n_states=len(components), dataset_size=self.dataset_size, n_observations=self.n_observations,
+            name="Combined-GM",
+            n_states=len(components), dataset_size=self.dataset_size, n_observations=self.n_observations,
             n_actions=self.n_actions, learning_step=1, W=W_hat, m=m_hat, v=v_hat, β=β_hat
         )
         gm.W_hat = W_hat
@@ -203,7 +204,7 @@ class DirichletHGM(AgentInterface):
         gm.β_hat = β_hat
         return gm
 
-    def find_terminal_components(self, parent):
+    def find_terminal_components(self, parent, is_root=False):
 
         # Initialize the list of terminal components.
         components = []
@@ -212,18 +213,18 @@ class DirichletHGM(AgentInterface):
         if len(parent.children) == 0:
             active_ks = parent.gm.active_components
             for k in active_ks:
-                components.append((parent.gm.W_hat[k], parent.gm.m_hat[k], parent.gm.v_hat[k], parent.gm.β_hat[k]))
+                components.append((parent.gm.W_hat[k], parent.gm.m_hat[k], parent.gm.v_hat[k], parent.gm.β_hat[k], parent.gm.d_hat[k]))
             return components
 
         # Keep track of active components, and call the function recursively for each child.
-        active_ks = parent.gm.active_components
+        active_ks = {s for s in range(parent.gm.n_states)} if is_root else parent.gm.active_components
         for child in parent.children:
             active_ks = active_ks.difference({int(child.name)})
             components.extend(self.find_terminal_components(child))
 
         # Retrieve non-expanded nodes that are terminal.
         for k in active_ks:
-            components.append((parent.gm.W_hat[k], parent.gm.m_hat[k], parent.gm.v_hat[k], parent.gm.β_hat[k]))
+            components.append((parent.gm.W_hat[k], parent.gm.m_hat[k], parent.gm.v_hat[k], parent.gm.β_hat[k], parent.gm.d_hat[k]))
 
         return components
 
@@ -242,7 +243,7 @@ class DirichletHGM(AgentInterface):
 
             # Learns the Gaussian Mixture corresponding to the current state.
             sub_gm = DirichletGM(
-                name="Sub-GM", n_states=self.n_states, dataset_size=len(x), n_observations=self.n_observations
+                name="Sub-GM", n_states=self.initial_n_states, dataset_size=len(x), n_observations=self.n_observations
             )
             sub_gm.x = x
             sub_gm.learn(clear=False, debug=debug, verbose=verbose)
@@ -257,13 +258,18 @@ class DirichletHGM(AgentInterface):
     def compute_responsibility(self, obs):
         # TODO remove code duplication
 
+        # Ensure that the observations are stored in a list.
+        if not isinstance(obs, list):
+            obs = [obs]
+        dataset_size = len(obs)
+
         # Compute the non-normalized state probabilities.
-        log_D = GaussianMixture.expected_log_D(self.gm.d, 1)
-        log_det = GaussianMixture.expected_log_det_Λ(self.gm.v_hat, self.gm.W_hat, 1)
+        log_D = GaussianMixture.expected_log_D(self.gm.d, dataset_size)
+        log_det = GaussianMixture.expected_log_det_Λ(self.gm.v_hat, self.gm.W_hat, dataset_size)
         quadratic_form = GaussianMixture.expected_quadratic_form(
-            [obs], self.gm.m_hat, self.gm.β_hat, self.gm.v_hat, self.gm.W_hat
+            obs, self.gm.m_hat, self.gm.β_hat, self.gm.v_hat, self.gm.W_hat
         )
-        log_ρ = torch.zeros([1, self.n_states])
+        log_ρ = torch.zeros([dataset_size, self.n_states])
         log_ρ += log_D - self.n_states / 2 * math.log(2 * math.pi) + 0.5 * log_det - 0.5 * quadratic_form
 
         # Normalize the state probabilities.

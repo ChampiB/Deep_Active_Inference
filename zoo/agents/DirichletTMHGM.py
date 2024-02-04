@@ -15,7 +15,7 @@ from zoo.helpers.MatPlotLib import MatPlotLib
 class DirichletTMHGM(AgentInterface):
     """
     Implement a Temporal Model with Hierarchical Gaussian Mixture likelihood and Dirichlet prior.
-    This model takes random each action.
+    This model takes action based on the risk over states.
     """
 
     def __init__(
@@ -61,7 +61,6 @@ class DirichletTMHGM(AgentInterface):
         self.n_states = n_states
         self.n_observations = n_observations
         self.skip = False
-        self.colors = ['red', 'green', 'blue', 'purple', 'gray', 'pink', 'turquoise', 'orange', 'brown', 'cyan']
         self.min_data_points = min_data_points
         self.max_planning_steps = max_planning_steps
         self.exp_const = exp_const
@@ -74,6 +73,9 @@ class DirichletTMHGM(AgentInterface):
         self.learning_step = learning_step
 
         # The dataset used for training.
+        self.all_x0 = []
+        self.all_x1 = []
+        self.all_a0 = []
         self.x0 = []
         self.x1 = []
         self.a0 = []
@@ -169,8 +171,8 @@ class DirichletTMHGM(AgentInterface):
             obs, reward, done, info = env.step(action)
 
             # Add the new observation to the dataset.
-            self.x0.append(old_obs.clone())
-            self.x1.append(obs.clone())
+            self.x0.append(old_obs)
+            self.x1.append(obs)
             self.a0.append(action)
 
             # Perform one iteration of training (if needed).
@@ -201,7 +203,7 @@ class DirichletTMHGM(AgentInterface):
         # Close the environment.
         env.close()
 
-    def learn(self, env, debug=True, verbose=True):
+    def learn(self, env, debug=True, verbose=False):
         """
         Perform on step of gradient descent on the encoder and the decoder
         :param env: the environment on which the agent is trained
@@ -220,10 +222,24 @@ class DirichletTMHGM(AgentInterface):
         self.r_hat[0] = self.gm0.r_hat
         self.r_hat[1] = self.gm1.r_hat
 
+        # Keep track of all the data.
+        self.all_x0.extend(self.x0)
+        self.all_x1.extend(self.x1)
+        self.all_a0.extend(self.a0)
+
         # Compute number of visits.
-        self.n_state_visits = self.r_hat[1].sum(dim=0)
+        r0 = self.gm1.compute_responsibility(self.all_x0)
+        r1 = self.gm1.compute_responsibility(self.all_x1)
+        self.n_state_visits = r1.sum(dim=0)
+        print(self.n_state_visits)
         self.target_state = -self.target_temperature * self.n_state_visits / self.n_state_visits.sum()
         self.target_state = torch.softmax(self.target_state, dim=0) + 0.0001
+        print(self.target_state)
+
+        # Retrieve the responsibilities and actions.
+        print("len(self.r_hat[0]): ", len(r0))
+        print("len(self.r_hat[1]): ", len(r1))
+        print("len(a0): ", len(self.all_a0))
 
         # Ensure the transition matrix has the right size.
         self.b = torch.ones([self.n_actions, self.gm1.n_states, self.gm0.n_states])
@@ -231,16 +247,14 @@ class DirichletTMHGM(AgentInterface):
 
         # Display the model's beliefs, if needed.
         if debug is True or verbose is True:
-            self.draw_beliefs_graphs(
-                env.action_names, f"[{self.agent_name}]: Before Optimization"
-            )
+            self.draw_beliefs_graphs(env.action_names, f"[{self.agent_name}]: Before Optimization")
 
         # Perform inference on the prediction model.
         self.skip = False
         for i in range(20):  # TODO implement a better stopping condition
 
             # Perform the update for the latent variable B, and display the model's beliefs (if needed).
-            self.update_for_b()
+            self.update_for_b(r0, r1, self.all_a0)
             if verbose is True and self.skip is False:
                 self.draw_beliefs_graphs(
                     env.action_names, f"[{self.agent_name}, inference step = {i}] After B update",
@@ -285,7 +299,7 @@ class DirichletTMHGM(AgentInterface):
             action_names=action_names, title=title,
             params0=(self.gm1.m_hat, self.gm1.v_hat, self.gm1.W_hat),
             params1=(self.gm1.m_hat, self.gm1.v_hat, self.gm1.W_hat),
-            x0=self.x0, x1=self.x1, a0=self.a0, r=self.r_hat, b_hat=self.b_hat, skip_fc=self.skip_graphs
+            x0=self.x0, x1=self.x1, a0=self.a0, r=self.r_hat, b_hat=self.b_hat, skip_fc=skip_fc
         )
         if skip_fc is None or self.skip is False:
             MatPlotLib.draw_dirichlet_tmhgm_graph(
@@ -293,12 +307,12 @@ class DirichletTMHGM(AgentInterface):
                 params0=(self.gm1.m_hat, self.gm1.v_hat, self.gm1.W_hat),
                 params1=(self.gm1.m_hat, self.gm1.v_hat, self.gm1.W_hat),
                 x0=self.x0, x1=self.x1, a0=self.a0, r=self.r_hat, b_hat=self.b_hat,
-                ellipses=False, skip_fc=self.skip_graphs
+                ellipses=False, skip_fc=skip_fc
             )
 
-    def update_for_b(self):
-        a = torch.nn.functional.one_hot(torch.tensor(self.a0))
-        self.b_hat = self.b + torch.einsum("na, nj, nk -> ajk", a, self.r_hat[1], self.r_hat[0])
+    def update_for_b(self, r0, r1, a0):
+        a0 = torch.nn.functional.one_hot(torch.tensor(a0), num_classes=self.n_actions)
+        self.b_hat = self.b + torch.einsum("na, nj, nk -> ajk", a0, r1, r0)
         self.B = self.compute_B()
 
     def predict(self, data):

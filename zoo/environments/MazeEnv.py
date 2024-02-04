@@ -53,7 +53,7 @@ class MazeEnv(EnvInterface):
             for row in range(n_rows):
                 maze.append([])
                 for column in range(n_columns):
-                    maze[row].append(1 if maze_data[row + 1][column] == "X" else 0)
+                    maze[row].append(1 if maze_data[row + 1][column] == "W" else 0)
                     if maze_data[row + 1][column] == "S":
                         self.initial_state = [float(row), float(column)]
                         self.state = [float(row), float(column)]

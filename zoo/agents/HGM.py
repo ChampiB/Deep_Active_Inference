@@ -55,7 +55,6 @@ class HGM(AgentInterface):
         self.n_states = n_states
         self.n_observations = n_observations
         self.min_data_points = min_data_points
-        self.colors = ['red', 'green', 'blue', 'purple', 'gray', 'pink', 'turquoise', 'orange', 'brown', 'cyan']
 
         # The number of learning steps performed so far.
         self.learning_step = learning_step

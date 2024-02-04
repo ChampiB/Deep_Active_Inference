@@ -53,7 +53,6 @@ class DirichletTGM(AgentInterface):
         self.n_actions = n_actions
         self.n_states = n_states
         self.n_observations = n_observations
-        self.colors = ['red', 'green', 'blue', 'purple', 'gray', 'pink', 'turquoise', 'orange', 'brown', 'cyan']
 
         # The number of learning steps performed so far.
         self.learning_step = learning_step
@@ -201,7 +200,7 @@ class DirichletTGM(AgentInterface):
 
             # Perform the update for the latent variable B, and display the model's beliefs (if needed).
             self.update_for_b()
-            log_B_hat = GaussianMixture.expected_log_B(self.b)
+            log_B_hat = GaussianMixture.expected_log_B(self.b_hat)
             if verbose is True:
                 self.draw_beliefs_graphs(env.action_names, f"[{i}] After B update")
 
@@ -256,7 +255,7 @@ class DirichletTGM(AgentInterface):
     def update_for_z0(self, log_B_hat):
 
         # Compute the non-normalized state probabilities.
-        log_D = GaussianMixture.expected_log_D(self.d, self.dataset_size)
+        log_D = GaussianMixture.expected_log_D(self.d_hat, self.dataset_size)
         log_B = self.expected_log_Bk(log_B_hat)
         log_det = GaussianMixture.expected_log_det_Λ(self.v_hat, self.W_hat, self.dataset_size)
         quadratic_form = GaussianMixture.expected_quadratic_form(self.x0, self.m_hat, self.β_hat, self.v_hat, self.W_hat)

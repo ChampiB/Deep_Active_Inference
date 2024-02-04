@@ -55,9 +55,6 @@ class DirichletGM(AgentInterface):
         self.n_states = n_states
         self.n_observations = n_observations
         self.skip = False
-        self.colors = ['red', 'green', 'blue', 'purple', 'gray', 'pink', 'turquoise', 'orange', 'brown', 'cyan']
-        if n_states > 10:
-            self.colors = list(mcolors.CSS4_COLORS.keys())
 
         # The number of learning steps performed so far.
         self.learning_step = learning_step
@@ -288,7 +285,7 @@ class DirichletGM(AgentInterface):
     def update_for_z(self):
 
         # Compute the non-normalized state probabilities.
-        log_D = GaussianMixture.expected_log_D(self.d, self.dataset_size)
+        log_D = GaussianMixture.expected_log_D(self.d_hat, self.dataset_size)
         log_det = GaussianMixture.expected_log_det_Λ(self.v_hat, self.W_hat, self.dataset_size)
         quadratic_form = GaussianMixture.expected_quadratic_form(self.x, self.m_hat, self.β_hat, self.v_hat, self.W_hat)
         log_ρ = torch.zeros([self.dataset_size, self.n_states])

@@ -1,3 +1,4 @@
+import math
 from random import randint
 import torch
 
@@ -8,31 +9,38 @@ class KMeans:
     """
 
     @staticmethod
-    def run(x, n_clusters):
+    def run(x, n_clusters, threshold=0.05):
         μ = [x[randint(0, len(x) - 1)] for _ in range(n_clusters)]
         r = torch.zeros([len(x), n_clusters])
-        for i in range(20):  # TODO implement a better stopping condition
+        diff = math.inf
+        while diff > threshold:
             r = KMeans.update_responsibilities(x, μ)
-            μ = KMeans.update_means(x, r)
+            μ, diff = KMeans.update_means(x, r, μ)
         return μ, r
 
     @staticmethod
     def update_responsibilities(x, μ):
         r = torch.zeros([len(x), len(μ)])
         for n in range(len(x)):
-            distances = [torch.pow(x[n] - μ[k], 2).sum().sqrt() for k in range(len(μ))]
+            distances = [KMeans.distance(x[n], μ[k]) for k in range(len(μ))]
             best_k = distances.index(min(distances))
             r[n][best_k] = 1
         return r
 
     @staticmethod
-    def update_means(x, r):
+    def distance(x1, x2):
+        return torch.pow(x1 - x2, 2).sum().sqrt()
+
+    @staticmethod
+    def update_means(x, r, μ_old):
         μ = []
         sum_r = r.sum(dim=0)
+        diff = 0
         for k in range(r.shape[1]):
             μ_k = sum([r[n][k] * x[n] for n in range(len(x))]) / (sum_r[k] + 0.00001)
             μ.append(μ_k)
-        return μ
+            diff += KMeans.distance(μ_k, μ_old[k])
+        return μ, diff
 
     @staticmethod
     def precision(x, r):

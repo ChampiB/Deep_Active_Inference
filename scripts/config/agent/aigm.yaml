@@ -1,0 +1,16 @@
+name: "aigm_${agent.n_states}"
+
+defaults:
+  - action_selection: softmax
+
+_target_: zoo.agents.AIGM.AIGM
+
+# Miscellaneous
+n_actions: ${environment.n_actions}
+n_states: 8
+n_observations: 2
+
+# Compatibility
+tensorboard_dir: "${tensorboard.directory}"
+checkpoint_dir: "${checkpoint.directory}"
+trainable: True
