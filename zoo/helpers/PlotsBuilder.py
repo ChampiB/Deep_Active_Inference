@@ -55,6 +55,7 @@ class PlotsBuilder:
             x = [x_tensor[0] for x_tensor in data]
             y = [x_tensor[1] for x_tensor in data]
 
+            r = torch.softmax(r, dim=1)
             c = [tuple(r_n) for r_n in r] if r.shape[1] == 3 else [self.colors[torch.argmax(r_n)] for r_n in r]
             self.current_axis.scatter(x=x, y=y, c=c)
 

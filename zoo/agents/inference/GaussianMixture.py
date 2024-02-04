@@ -31,16 +31,16 @@ class GaussianMixture:
         self.r_hat = softmax(torch.ones([x.shape[0], d.shape[0]]), dim=1) if r_hat is None else r_hat + ε
 
         # Pre-compute useful terms.
-        self.digamma_d_hat, self.sum_d_hat, self.digamma_sum_d_hat, self.expected_log_D = self.pre_compute_d_terms()
-        self.Ns, self.x_bar, self.S = self.pre_compute_z_terms()
-        self.expected_log_det_Λ = self.pre_compute_μ_and_Λ_terms()
         self.ln2pi = math.log(2 * math.pi)
         self.ln2 = math.log(2)
+        self.expected_log_D = self.compute_expected_log_D()
+        self.Ns, self.x_bar, self.S = self.pre_compute_z_terms()
+        self.expected_log_det_Λ = self.compute_expected_log_det_Λ()
 
         # The variational free energy.
         self.F = self.compute_vfe()
 
-    def learn(self, debug=False, verbose=True, threshold=1):
+    def learn(self, debug=False, verbose=False, threshold=1):
 
         # Display debug information, if needed.
         if debug is True:
@@ -49,8 +49,9 @@ class GaussianMixture:
 
         # Perform variational inference, while the variational free energy has not converged.
         vfe = math.inf
-        i = 0
-        while abs(vfe - self.vfe) > threshold:
+        diff = vfe - self.vfe
+        n_steps = 0
+        while abs(vfe - self.vfe) > threshold and n_steps < 5:
 
             # Update the current variational free energy.
             vfe = self.vfe
@@ -61,10 +62,16 @@ class GaussianMixture:
             self.update_μ_and_Λ()
             self.update_vfe()
 
+            # Keep track of the number of steps for which no progress was made.
+            if diff == abs(float(vfe - self.vfe)):
+                n_steps += 1
+            else:
+                n_steps = 0
+                diff = abs(float(vfe - self.vfe))
+
             # Display debug information, if needed.
             if verbose is True:
-                i += 1
-                print(f"Iteration {i}, VFE reduced by: {float(vfe - self.vfe)}, new VFE: {self.vfe}")
+                print(f"VFE reduced by: {float(vfe - self.vfe)}, new VFE: {self.vfe}")
 
         # Display debug information, if needed.
         if debug is True:
@@ -86,37 +93,43 @@ class GaussianMixture:
 
     def update_d(self):
         self.d_hat = self.d + self.Ns
-        self.digamma_d_hat, self.sum_d_hat, self.digamma_sum_d_hat, self.expected_log_D = self.pre_compute_d_terms()
+        self.expected_log_D = self.compute_expected_log_D()
 
-    def pre_compute_d_terms(self):
-        digamma_d_hat = digamma(self.d_hat)
-        sum_d_hat = self.d_hat.sum()
-        digamma_sum_d_hat = digamma(sum_d_hat)
-        expected_log_D = digamma_d_hat - digamma_sum_d_hat
-        return digamma_d_hat, sum_d_hat, digamma_sum_d_hat, expected_log_D
+    def compute_expected_log_D(self):
+        return digamma(self.d_hat) - digamma(self.d_hat.sum())
 
     def update_z(self):
 
-        # Compute the non-normalized state probabilities.
-        expected_log_D = unsqueeze(self.expected_log_D, dim=0).repeat(self.N, 1)
-        quadratic_form = self.expected_quadratic_form()
-        log_det = unsqueeze(self.expected_log_det_Λ, dim=0).repeat(self.N, 1)
-        log_ρ = zeros([self.N, self.K])
-        log_ρ += expected_log_D - 0.5 * (self.K * self.ln2pi - log_det + quadratic_form)
-
         # Normalize the state probabilities.
-        self.r_hat = softmax(log_ρ, dim=1) + self.ε
+        self.r_hat = self.compute_responsibility()
 
         # Pre-compute useful terms.
         self.Ns, self.x_bar, self.S = self.pre_compute_z_terms()
 
-    def expected_quadratic_form(self):
-        dataset_size = self.N
+    def compute_responsibility(self, obs=None):
+
+        # Compute the non-normalized state probabilities.
+        dataset_size = self.N if obs is None else obs.shape[0]
+        expected_log_D = unsqueeze(self.expected_log_D, dim=0).repeat(dataset_size, 1)
+        quadratic_form = self.expected_quadratic_form(obs)
+        log_det = unsqueeze(self.expected_log_det_Λ, dim=0).repeat(dataset_size, 1)
+        log_ρ = zeros([dataset_size, self.K])
+        log_ρ += expected_log_D - 0.5 * (self.K * self.ln2pi - log_det + quadratic_form)
+
+        # Normalize the state probabilities.
+        return softmax(log_ρ, dim=1) + self.ε
+
+    def expected_quadratic_form(self, obs=None):
+
+        if obs is None:
+            obs = self.x
+
+        dataset_size = obs.shape[0]
         n_states = self.K
         quadratic_form = zeros([dataset_size, n_states])
         for n in range(dataset_size):
             for k in range(n_states):
-                diff = self.x[n] - self.m_hat[k]
+                diff = obs[n] - self.m_hat[k]
                 quadratic_form[n][k] = n_states / self.β_hat[k]
                 quadratic_form[n][k] += self.v_hat[k] * matmul(matmul(diff.t(), self.W_hat[k]), diff)
         return quadratic_form
@@ -150,23 +163,23 @@ class GaussianMixture:
         self.v_hat = self.v + self.Ns
         self.β_hat = self.β + self.Ns
         self.m_hat = [(self.β[k] * self.m[k] + self.Ns[k] * self.x_bar[k]) / self.β_hat[k] for k in range(self.K)]
-        self.W_hat = [self.compute_W_hat(self.Ns, k, self.x_bar) for k in range(self.K)]
+        self.W_hat = [self.compute_W_hat(k) for k in range(self.K)]
 
         # Pre-compute useful terms.
-        self.expected_log_det_Λ = self.pre_compute_μ_and_Λ_terms()
+        self.expected_log_det_Λ = self.compute_expected_log_det_Λ()
 
-    def compute_W_hat(self, N, k, x_bar):
+    def compute_W_hat(self, k):
         W_hat = inverse(self.W[k]) + self.Ns[k] * self.S[k]
-        x = x_bar[k] - self.m[k]
-        W_hat += (self.β[k] * N[k] / self.β_hat[k]) * outer(x, x)
+        x = self.x_bar[k] - self.m[k]
+        W_hat += (self.β[k] * self.Ns[k] / self.β_hat[k]) * outer(x, x)
         return inverse(W_hat)
 
-    def pre_compute_μ_and_Λ_terms(self):
+    def compute_expected_log_det_Λ(self):
         log_det = []
         n_states = self.K
         for k in range(n_states):
             digamma_sum = sum([digamma((self.v_hat[k] - i) / 2) for i in range(n_states)])
-            log_det.append(n_states * math.log(2) + logdet(self.W_hat[k]) + digamma_sum)
+            log_det.append(n_states * self.ln2 + logdet(self.W_hat[k]) + digamma_sum)
         return tensor(log_det)
 
     @staticmethod
@@ -195,7 +208,7 @@ class GaussianMixture:
             F += 0.5 * (self.K * (log_β_hat[k] - self.ln2pi) + self.expected_log_det_Λ[k] - self.K)
 
             # Add E[P(μ|Λ)].
-            diff = self.m_hat[k] - self.m[k]
+            diff = self.m[k] - self.m_hat[k]
             quadratic_form = (
                 self.K * self.β[k] / self.β_hat[k] +
                 self.β[k] * self.v_hat[k] * matmul(matmul(diff.t(), self.W_hat[k]), diff)
@@ -213,7 +226,7 @@ class GaussianMixture:
                 self.v[k] * self.K * self.ln2 + self.v[k] * logdet(self.W[k]) -
                 (self.v[k] - self.K - 1) * self.expected_log_det_Λ[k] +
                 self.v_hat[k] * trace(matmul(inverse(self.W[k]), self.W_hat[k]))
-            ) - mvlgamma(self.v[k] / 2, self.K)
+            ) + mvlgamma(self.v[k] / 2, self.K)
 
             # Add E[P(X|Z,μ,Λ)].
             diff = self.x_bar[k] - self.m[k]
@@ -224,8 +237,7 @@ class GaussianMixture:
             )
 
         # Add E[Q(Z)].
-        log_r_hat = self.r_hat.log()
-        F += (self.r_hat * log_r_hat).sum()
+        F += (self.r_hat * self.r_hat.log()).sum()
         return F
 
     def update_vfe(self):
