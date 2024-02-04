@@ -1,8 +1,7 @@
-import math
-
 from zoo.agents.AgentInterface import AgentInterface
 from zoo.agents.actions.SelectRandomAction import SelectRandomAction
 from zoo.agents.inference.GaussianMixture import GaussianMixture
+from zoo.agents.inference.HierarchicalGM import HierarchicalGM
 from zoo.agents.save.Checkpoint import Checkpoint
 from datetime import datetime
 import torch
@@ -81,49 +80,28 @@ class AIGM(AgentInterface):
         # Close the environment.
         env.close()
 
-    def learn(self, env, debug=True, verbose=False, threshold=0.):
+    def learn(self, env, debug=True, verbose=False):
         """
         Perform on step of gradient descent on the encoder and the decoder
         :param env: the environment on which the agent is trained
         :param debug: whether to display debug information
         :param verbose: whether to display detailed debug information
-        :param threshold: the minimal amount of variational free energy reduction required to continue the optimization
         """
 
         # Initialize the Gaussian mixture using k-means, or update the data of the current Gaussian mixture.
         if self.gm is None:
-            self.gm = self.initial_gaussian_mixture()
+            self.gm = self.initial_gaussian_mixture(self.x)
         else:
             self.gm.x = self.x
 
-        # Display debug information, if needed.
+        # Perform variational inference.
+        self.gm.learn()
         if debug is True:
-            print(f"Initial VFE: {self.gm.vfe}")
-            self.gm.show("Gaussian Mixture: before optimization")
+            self.gm.show(f"Gaussian Mixture with VFE = {self.gm.vfe}")
 
-        # Perform variational inference, while the variational free energy has not converged.
-        vfe = math.inf
-        i = 0
-        while abs(vfe - self.gm.vfe) > threshold:
-
-            # Update the current variational free energy.
-            vfe = self.gm.vfe
-
-            # Perform variational inference.
-            self.gm.update_z()
-            self.gm.update_d()
-            self.gm.update_μ_and_Λ()
-            self.gm.update_vfe()
-
-            # Display debug information, if needed.
-            if debug is True:
-                i += 1
-                print(f"Iteration {i}, VFE reduced by: {float(vfe - self.gm.vfe)}, new VFE: {self.gm.vfe}")
-
-        # Display debug information, if needed.
+        self.gm = HierarchicalGM.split_components(self.gm, init_gm=self.initial_gaussian_mixture)
         if debug is True:
-            print(f"Final VFE: {self.gm.vfe}")
-            self.gm.show("Gaussian Mixture: after optimization")
+            self.gm.show(f"Hierarchical Gaussian Mixture with VFE = {self.gm.vfe}")
 
         # Use the posterior as an empirical prior.
         # TODO self.gm.use_posterior_as_empirical_prior()
@@ -136,7 +114,7 @@ class AIGM(AgentInterface):
         """
         return self.action_selection.select(torch.ones([1, self.n_actions]), self.steps_done)
 
-    def initial_gaussian_mixture(self):
+    def initial_gaussian_mixture(self, x):
 
         # Initialize the degrees of freedom, and the Dirichlet parameters.
         v = (self.n_observations - 0.99) * torch.ones([self.n_states])
@@ -144,14 +122,14 @@ class AIGM(AgentInterface):
         β = torch.ones([self.n_states])
 
         # Perform K-means to initialize the parameter of the posterior over latent variables at time step 1.
-        μ, r = KMeans.run(self.x, self.n_states)
+        μ, r = KMeans.run(x, self.n_states)
 
         # Estimate the covariance of the clusters and use it to initialize the Wishart prior and posterior.
-        precision = KMeans.precision(self.x, r)
+        precision = KMeans.precision(x, r)
         W = [precision[k] / v[k] for k in range(self.n_states)]
 
         # Create the initial Gaussian mixture.
-        return GaussianMixture(self.x, W, μ, v, β, d, r)
+        return GaussianMixture(x, W, μ, v, β, d, r)
 
     @staticmethod
     def load_constructor_parameters(tb_dir, checkpoint, training_mode=True):

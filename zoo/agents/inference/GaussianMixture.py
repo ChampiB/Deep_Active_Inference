@@ -7,7 +7,7 @@ from zoo.helpers.MatPlotLib import MatPlotLib
 
 class GaussianMixture:
 
-    def __init__(self, x, W, m, v, β, d, r_hat, ε=1e-7):
+    def __init__(self, x, W, m, v, β, d, r_hat=None, ε=1e-7):
 
         # Store a small number used for numerical stability.
         self.ε = ε
@@ -28,7 +28,7 @@ class GaussianMixture:
         self.v_hat = v.clone()
         self.β_hat = β.clone()
         self.d_hat = d.clone()
-        self.r_hat = r_hat + ε
+        self.r_hat = softmax(torch.ones([x.shape[0], d.shape[0]]), dim=1) if r_hat is None else r_hat + ε
 
         # Pre-compute useful terms.
         self.digamma_d_hat, self.sum_d_hat, self.digamma_sum_d_hat, self.expected_log_D = self.pre_compute_d_terms()
@@ -39,6 +39,50 @@ class GaussianMixture:
 
         # The variational free energy.
         self.F = self.compute_vfe()
+
+    def learn(self, debug=False, verbose=True, threshold=1):
+
+        # Display debug information, if needed.
+        if debug is True:
+            print(f"Initial VFE: {self.vfe}")
+            self.show("Gaussian Mixture: before optimization")
+
+        # Perform variational inference, while the variational free energy has not converged.
+        vfe = math.inf
+        i = 0
+        while abs(vfe - self.vfe) > threshold:
+
+            # Update the current variational free energy.
+            vfe = self.vfe
+
+            # Perform variational inference.
+            self.update_z()
+            self.update_d()
+            self.update_μ_and_Λ()
+            self.update_vfe()
+
+            # Display debug information, if needed.
+            if verbose is True:
+                i += 1
+                print(f"Iteration {i}, VFE reduced by: {float(vfe - self.vfe)}, new VFE: {self.vfe}")
+
+        # Display debug information, if needed.
+        if debug is True:
+            print(f"Final VFE: {self.vfe}")
+            self.show("Gaussian Mixture: after optimization")
+
+    def data_of_component(self, k):
+        return self.x[self.r_hat.argmax(dim=1) == k]
+
+    @property
+    def active_components(self):
+        return set(self.r_hat.argmax(dim=1).tolist())
+
+    def params(self, k):
+        return (
+            self.W[k], self.m[k], self.v[k], self.β[k], self.d[k],
+            self.W_hat[k], self.m_hat[k], self.v_hat[k], self.β_hat[k], self.d_hat[k]
+        )
 
     def update_d(self):
         self.d_hat = self.d + self.Ns
@@ -80,9 +124,7 @@ class GaussianMixture:
     def pre_compute_z_terms(self):
         Ns = self.compute_Ns()
         x_bar = self.compute_x_bar(Ns)
-        # TODO x_bar[x_bar == float("nan")] = 0
-        S = [self.compute_S(Ns, x_bar, k) for k in range(self.K)]  # TODO concat(.unsqueeze(dim=0), dim=0)
-        # TODO S[S == float("nan")] = 0
+        S = [self.compute_S(Ns, x_bar, k) for k in range(self.K)]
         return Ns, x_bar, S
 
     def compute_Ns(self):
@@ -183,7 +225,6 @@ class GaussianMixture:
 
         # Add E[Q(Z)].
         log_r_hat = self.r_hat.log()
-        # TODO log_r_hat[log_r_hat == float("-inf")] = 0
         F += (self.r_hat * log_r_hat).sum()
         return F
 
