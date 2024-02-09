@@ -1,6 +1,5 @@
 import numpy as np
 from gym import spaces
-
 from zoo.environments.EnvInterface import EnvInterface
 from zoo.helpers.Device import Device
 from zoo.helpers.SpritesDataset import DataSet

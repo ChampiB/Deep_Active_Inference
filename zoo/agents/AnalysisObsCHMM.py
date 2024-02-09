@@ -20,7 +20,7 @@ import torch
 from scipy.stats import entropy
 
 
-class AnalysisCHMM(AgentInterface):
+class AnalysisObsCHMM(AgentInterface):
     """
     Implement a Critical HMM able to evaluate the qualities of each action.
     """
@@ -141,12 +141,9 @@ class AnalysisCHMM(AgentInterface):
         :return: the random action
         """
 
-        # Extract the current state from the current observation.
-        obs = torch.unsqueeze(obs, dim=0)
-        state, _ = self.encoder(obs)
-
         # Select an action.
-        quality = self.critic(state)
+        obs = torch.unsqueeze(obs, dim=0)
+        quality = self.critic(obs)
         action = self.action_selection.select(quality, self.steps_done)
 
         # Select another action, if this action was.
@@ -161,7 +158,7 @@ class AnalysisCHMM(AgentInterface):
         self.actions_picked = pd.concat([self.actions_picked, new_row], ignore_index=True, axis=0)
 
         # Compute entropy of prior over actions.
-        sm = nn.Softmax(dim=1)(self.critic(state))
+        sm = nn.Softmax(dim=1)(self.critic(obs))
         e = entropy(sm[0].detach().cpu())
         new_row = pd.DataFrame({"Training iterations": [self.steps_done], "Entropy": [e]})
         self.entropy = pd.concat([self.entropy, new_row], ignore_index=True, axis=0)
@@ -317,13 +314,13 @@ class AnalysisCHMM(AgentInterface):
         mean_hat, log_var_hat = self.encoder(next_obs)
 
         # Compute the G-values of each action in the current state.
-        critic_pred = self.critic(mean_hat_t)
+        critic_pred = self.critic(obs)
         critic_pred = critic_pred.gather(dim=1, index=unsqueeze(actions.to(torch.int64), dim=1))
 
         # For each batch entry where the simulation did not stop,
         # compute the value of the next states.
         future_gval = torch.zeros(config.task.batch_size, device=Device.get())
-        future_gval[torch.logical_not(done)] = self.target(mean_hat[torch.logical_not(done)]).max(1)[0]
+        future_gval[torch.logical_not(done)] = self.target(next_obs[torch.logical_not(done)]).max(1)[0]
 
         # Compute the information gain (if needed).
         percentage = self.info_gain_percentage / 100.0 if self.n_steps_info_gain_incr <= self.steps_done else 0.0
@@ -411,7 +408,7 @@ class AnalysisCHMM(AgentInterface):
         obs, actions = data
         mean_hat_t, log_var_hat_t = self.encoder(obs)
         transition_prediction = self.transition(mean_hat_t, actions)
-        critic_prediction = self.critic(mean_hat_t)
+        critic_prediction = self.critic(obs)
         return (mean_hat_t, log_var_hat_t), transition_prediction, critic_prediction
 
     def synchronize_target(self):

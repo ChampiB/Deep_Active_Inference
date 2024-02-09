@@ -1,13 +1,13 @@
-name: "chmm_${agent.g_value}_${agent.reward_coefficient}_${agent.action_selection.name}_${agent.info_gain_percentage}%"
+name: "obs_chmm_${agent.g_value}_${agent.reward_coefficient}_${agent.action_selection.name}_${agent.info_gain_percentage}%"
 
 defaults:
   - encoder: convolutional_64
   - decoder: convolutional_64
   - transition: linear_relu_3x100
-  - critic: linear_relu_4x100
+  - critic: convolutional_64
   - action_selection: epsilon_greedy
 
-_target_: zoo.agents.AnalysisCHMM.AnalysisCHMM
+_target_: zoo.agents.AnalysisObsCHMM.AnalysisObsCHMM
 
 # Miscellaneous
 n_actions: ${environment.n_actions}

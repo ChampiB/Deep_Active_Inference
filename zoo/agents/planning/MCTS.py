@@ -24,15 +24,16 @@ class MCTS:
         self.p_step = p_step
         self.efe = efe
 
-    def step(self, state):
+    def step(self, state, b):
         """
         Perform Monte Carlo Tree Search planning
         :param state: the current state of the environment
+        :param b: the current dirichlet parameters
         :return: a tensor containing the number of visits corresponding to each action
         """
 
         # Initialize the root node.
-        self.root = Node("root", action=-1, visits=1, cost=0, state=state)
+        self.root = Node("root", action=-1, visits=1, cost=0, state=state, b=b)
 
         # Perform Monte Carlo Tree Search.
         for i in range(0, self.max_planning_steps):
@@ -72,7 +73,8 @@ class MCTS:
         """
         nodes = []
         for action in range(0, self.n_actions):
-            node = Node(str(action), action=action, visits=1, cost=0, state=self.p_step(parent, action), parent=parent)
+            state, b = self.p_step(parent, action)
+            node = Node(str(action), action=action, visits=1, cost=0, state=state, b=b, parent=parent)
             nodes.append(node)
         return nodes
 

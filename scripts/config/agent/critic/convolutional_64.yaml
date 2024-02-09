@@ -1,0 +1,4 @@
+_target_: zoo.agents.networks.ValueNetworks.Convolutional64
+
+n_actions: ${environment.n_actions}
+image_shape: ${agent.image_shape}

@@ -1,3 +1,5 @@
+from torch.distributions import Dirichlet
+
 from zoo.agents.AgentInterface import AgentInterface
 from zoo.agents.inference.GaussianMixture import GaussianMixture
 from zoo.agents.inference.HierarchicalGM import HierarchicalGM
@@ -75,7 +77,10 @@ class AIGM(AgentInterface):
 
         # Train the agent.
         logging.info("Start the training at {time}".format(time=datetime.now()))
+        i = 0
         while self.steps_done < config.task.max_n_steps:
+
+            print(i)
 
             # Select an action.
             action = self.step(obs)
@@ -100,6 +105,7 @@ class AIGM(AgentInterface):
 
             # Increase the number of steps done.
             self.steps_done += 1
+            i += 1
 
         # Close the environment.
         env.close()
@@ -170,11 +176,48 @@ class AIGM(AgentInterface):
         return b
 
     def predict_next_state(self, node, action):
-        return torch.matmul(self.B[action], node.state.squeeze())
+
+        # Predict the next state.
+        next_state = torch.matmul(self.B[action], node.state.squeeze())
+
+        # Collect the responsibilities and actions.
+        action = torch.nn.functional.one_hot(torch.tensor(action), num_classes=self.n_actions)
+
+        # Compute the new posterior parameters.
+        new_b_hat = node.b + torch.einsum("a, j, k -> ajk", action, next_state, node.state.squeeze())
+
+        return next_state, new_b_hat
 
     def efe(self, node):
-        risk_over_states = node.state * (node.state.log() - self.target_state.log())
-        return risk_over_states.sum()
+        return 0
+
+        # TODO risk_over_states = node.state * (node.state.log() - self.target_state.log())
+        # TODO return risk_over_states.sum()
+
+        # KL divergence between two Dirichlet distributions (sampling solution)
+        # TODO n_states = node.b.shape[1]
+        # TODO novelty = 0
+        # TODO for action in range(node.b.shape[0]):
+        # TODO     for state in range(n_states):
+        # TODO         d1 = Dirichlet(node.b[action][:][state])
+        # TODO         samples = d1.sample()
+        # TODO         d2 = Dirichlet(self.b[action][:][state])
+        # TODO         novelty += d1.log_prob(samples) - d2.log_prob(samples))
+
+        # KL divergence between two Dirichlet distributions (analytic solution)
+        # TODO n_states = node.b.shape[1]
+        # TODO novelty = 0
+        # TODO for action in range(node.b.shape[0]):
+        # TODO     for state in range(n_states):
+        # TODO         novelty += torch.lgamma(sum(node.b[action][next_state][state] for next_state in range(n_states)))
+        # TODO         novelty -= torch.lgamma(sum(self.b_hat[action][next_state][state] for next_state in range(n_states)))
+        # TODO         digamma_sum = torch.digamma(sum(node.b[action][next_state][state] for next_state in range(n_states)))
+        # TODO         for next_state in range(n_states):
+        # TODO             novelty += torch.lgamma(self.b_hat[action][next_state][state])
+        # TODO             novelty -= torch.lgamma(node.b[action][next_state][state])
+        # TODO             novelty += (node.b[action][next_state][state] - self.b_hat[action][next_state][state]) * \
+        # TODO                        (torch.digamma(node.b[action][next_state][state]) - digamma_sum)
+        # TODO return novelty
 
     def update_target(self):
         return torch.softmax(- self.target_temperature * self.gm.Ns / self.gm.Ns.sum(), dim=0)
@@ -200,7 +243,7 @@ class AIGM(AgentInterface):
         state = self.gm.compute_responsibility(obs.unsqueeze(dim=0))
 
         # Perform planning.
-        quality = self.mcts.step(state)
+        quality = self.mcts.step(state, self.b)
 
         # Select an action.
         return self.action_selection.select(quality, self.steps_done)

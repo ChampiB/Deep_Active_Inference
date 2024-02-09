@@ -1,13 +1,13 @@
-name: "chmm_${agent.g_value}_${agent.reward_coefficient}_${agent.action_selection.name}_${agent.info_gain_percentage}%"
+name: "dual_chmm_${agent.g_value}_${agent.reward_coefficient}_${agent.action_selection.name}_${agent.info_gain_percentage}%"
 
 defaults:
   - encoder: convolutional_64
   - decoder: convolutional_64
   - transition: linear_relu_3x100
-  - critic: linear_relu_4x100
+  - critic: dual_linear_relu_4x100
   - action_selection: epsilon_greedy
 
-_target_: zoo.agents.AnalysisCHMM.AnalysisCHMM
+_target_: zoo.agents.AnalysisDualCHMM.AnalysisDualCHMM
 
 # Miscellaneous
 n_actions: ${environment.n_actions}
@@ -24,7 +24,7 @@ reward_coefficient: 5000
 g_value: "efe"
 efe_loss_update_encoder: False
 image_shape: ${tuple:3,64,64}
-inhibition_of_return: False
+inhibition_of_return: True
 trainable: True
 verbose: False
 

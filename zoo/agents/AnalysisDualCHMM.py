@@ -20,9 +20,9 @@ import torch
 from scipy.stats import entropy
 
 
-class AnalysisCHMM(AgentInterface):
+class AnalysisDualCHMM(AgentInterface):
     """
-    Implement a Critical HMM able to evaluate the qualities of each action.
+    Implement a Dual Critical HMM able to evaluate the qualities of each action.
     """
 
     def __init__(
@@ -103,6 +103,11 @@ class AnalysisCHMM(AgentInterface):
         self.n_actions = n_actions
         self.n_states = n_states
         self.efe_loss_update_encoder = efe_loss_update_encoder
+        self.qualities = pd.DataFrame(
+            columns=["Training iterations"] +
+                    [f"Information Gain {action}" for action in range(self.n_actions)] +
+                    [f"Reward {action}" for action in range(self.n_actions)]
+        )
         self.actions_picked = pd.DataFrame(columns=["Training iterations", "Actions"])
         self.entropy = pd.DataFrame(columns=["Training iterations", "Entropy"])
         self.verbose = verbose
@@ -145,14 +150,23 @@ class AnalysisCHMM(AgentInterface):
         obs = torch.unsqueeze(obs, dim=0)
         state, _ = self.encoder(obs)
 
-        # Select an action.
+        # Compute the quality of each action in terms of reward and information gain.
         quality = self.critic(state)
+        new_row = pd.DataFrame(
+            {"Training iterations": [self.steps_done]} |
+            {f"Information Gain {action}": [quality[0][action]] for action in range(self.n_actions)} |
+            {f"Reward {action}": [quality[0][self.n_actions + action]] for action in range(self.n_actions)}
+        )
+        self.qualities = pd.concat([self.qualities, new_row], ignore_index=True, axis=0)
+
+        # Select an action.
+        quality = quality[0][:self.n_actions] + quality[0][self.n_actions:]
         action = self.action_selection.select(quality, self.steps_done)
 
-        # Select another action, if this action was.
+        # Select another action, if this action tries to go back to the previous state.
         while self.inhibition_of_return is True and self.agent_want_to_go_back(action):
-            action = self.action_selection.select(quality, self.steps_done)
             quality[0][action] = quality.min() - 1
+            action = self.action_selection.select(quality, self.steps_done)
         self.last_action = action
 
         # Save action taken.
@@ -235,9 +249,10 @@ class AnalysisCHMM(AgentInterface):
         # Close the environment.
         env.close()
 
-        # Display graph.
+        # Save the data to display analysis graphs.
         self.save_actions_picked()
         self.save_actions_prior_entropy()
+        self.save_action_qualities()
 
     def save_actions_prior_entropy(self):
         """
@@ -266,6 +281,20 @@ class AnalysisCHMM(AgentInterface):
         # Save dataframe to CSV.
         filepath = Path(f"{directory}/selected_actions.csv")
         self.actions_picked.to_csv(filepath)
+
+    def save_action_qualities(self):
+        """
+        Save the action qualities as estimated by the critic
+        :return: nothing
+        """
+
+        # Create the directory in which the dataframe should be saved.
+        directory = self.task_dir.replace("[[DIRECTORY]]", "action_qualities")
+        os.makedirs(directory, exist_ok=True)
+
+        # Save dataframe to CSV.
+        filepath = Path(f"{directory}/action_qualities.csv")
+        self.qualities.to_csv(filepath)
 
     def learn(self, config):
         """

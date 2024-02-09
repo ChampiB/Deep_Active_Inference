@@ -99,4 +99,10 @@ def compute_info_gain(g_value, mean, log_var, mean_hat, log_var_hat):
         info_gain = -kl_div_gaussian(mean, log_var, mean_hat, log_var_hat)
     if g_value == "efe":
         info_gain = kl_div_gaussian(mean_hat, log_var_hat, mean, log_var)
+    if g_value == "entropy_posterior":
+        info_gain = - entropy_gaussian(log_var_hat, mean_hat)
+    if g_value == "entropy_prior":
+        info_gain = - entropy_gaussian(log_var, mean)
+    if g_value == "entropy":
+        info_gain = - entropy_gaussian(log_var, mean) - entropy_gaussian(log_var_hat, mean_hat)
     return info_gain
