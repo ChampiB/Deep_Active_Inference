@@ -227,7 +227,7 @@ class AnalysisObsCHMM(AgentInterface):
             self.steps_done += 1
 
         # Save the final version of the model.
-        self.save(config, config, final_model=True)
+        self.save(env, config, final_model=True)
 
         # Close the environment.
         env.close()

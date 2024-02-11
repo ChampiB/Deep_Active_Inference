@@ -1,8 +1,8 @@
 # Define the agent, environment and task
 defaults:
   - environment: d_sprites
-  - agent: dual_chmm_analysis
-  - task: training  # TODO draw_action_qualities
+  - agent: dai_analysis
+  - task: training
   - _self_
 
 # Parameters related to saving and reloading the agents

@@ -1,13 +1,12 @@
-name: "obs_chmm_${agent.g_value}_${agent.reward_coefficient}_${agent.action_selection.name}_${agent.info_gain_percentage}%"
+name: "obs_dai_${agent.g_value}_${agent.reward_coefficient}_${agent.action_selection.name}_${agent.info_gain_percentage}%"
 
 defaults:
-  - encoder: convolutional_64
+  - encoder: critical_convolutional_64
   - decoder: convolutional_64
   - transition: linear_relu_3x100
-  - critic: convolutional_64
   - action_selection: epsilon_greedy
 
-_target_: zoo.agents.AnalysisObsCHMM.AnalysisObsCHMM
+_target_: zoo.agents.AnalysisObsDAI.AnalysisObsDAI
 
 # Miscellaneous
 n_actions: ${environment.n_actions}
@@ -22,7 +21,6 @@ checkpoint_dir: "${checkpoint.directory}"
 task_dir: "${oc.env:DATA_DIRECTORY}/${task.name}/[[DIRECTORY]]/${environment.name}/${agent.name}/${task.seed}/"
 reward_coefficient: 2000
 g_value: "efe"
-efe_loss_update_encoder: False
 image_shape: ${tuple:3,64,64}
 inhibition_of_return: False
 trainable: True

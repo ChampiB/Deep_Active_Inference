@@ -20,16 +20,16 @@ import torch
 from scipy.stats import entropy
 
 
-class AnalysisCHMM(AgentInterface):
+class AnalysisObsDAI(AgentInterface):
     """
-    Implement a Critical HMM able to evaluate the qualities of each action.
+    Implement a Deep Active Inference agent able to evaluate the qualities of each action (from observations).
     """
 
     def __init__(
-        self, name, encoder, decoder, transition, critic, discount_factor, n_steps_info_gain_incr,
+        self, name, encoder, decoder, transition, discount_factor, n_steps_info_gain_incr,
         info_gain_percentage, efe_lr, vfe_lr, queue_capacity, n_steps_between_synchro, tensorboard_dir, checkpoint_dir,
         g_value, image_shape, n_states, action_selection, task_dir, reward_coefficient, n_actions=4, steps_done=0,
-        efe_loss_update_encoder=False, inhibition_of_return=False, verbose=False, **_
+        inhibition_of_return=False, verbose=False, **_
     ):
         """
         Constructor
@@ -56,7 +56,6 @@ class AnalysisCHMM(AgentInterface):
         :param g_value: the type of value to be used, i.e. "reward" or "efe"
         :param reward_coefficient: the coefficient by which the reward is multiplied
         :param steps_done: the number of training iterations performed to date
-        :param efe_loss_update_encoder: True if the efe loss must update the weights of the encoder
         :param inhibition_of_return: the last
         :param verbose: whether to log weights information such as mean, min and max values of layers' weights
         """
@@ -68,17 +67,15 @@ class AnalysisCHMM(AgentInterface):
         self.encoder = encoder
         self.decoder = decoder
         self.transition = transition
-        self.critic = critic
-        self.target = copy.deepcopy(self.critic)
+        self.target = copy.deepcopy(self.encoder)
         self.target.eval()
 
         # Ensure models are on the right device.
-        Device.send([self.encoder, self.decoder, self.transition, self.critic, self.target])
+        Device.send([self.encoder, self.decoder, self.transition, self.target])
 
         # Optimizers.
         self.vfe_optimizer = Optimizers.get_adam([encoder, decoder, transition], vfe_lr)
-        self.efe_optimizer = Optimizers.get_adam([encoder, critic], efe_lr) \
-            if efe_loss_update_encoder else Optimizers.get_adam([critic], efe_lr)
+        self.efe_optimizer = Optimizers.get_adam([self.encoder], efe_lr)
 
         # Information gain scheduling.
         self.n_steps_info_gain_incr = n_steps_info_gain_incr
@@ -102,7 +99,6 @@ class AnalysisCHMM(AgentInterface):
         self.action_selection = action_selection
         self.n_actions = n_actions
         self.n_states = n_states
-        self.efe_loss_update_encoder = efe_loss_update_encoder
         self.actions_picked = pd.DataFrame(columns=["Training iterations", "Actions"])
         self.entropy = pd.DataFrame(columns=["Training iterations", "Entropy"])
         self.verbose = verbose
@@ -141,12 +137,9 @@ class AnalysisCHMM(AgentInterface):
         :return: the random action
         """
 
-        # Extract the current state from the current observation.
-        obs = torch.unsqueeze(obs, dim=0)
-        state, _ = self.encoder(obs)
-
         # Select an action.
-        quality = self.critic(state)
+        obs = torch.unsqueeze(obs, dim=0)
+        (_, _), quality = self.encoder(obs)
         action = self.action_selection.select(quality, self.steps_done)
 
         # Select another action, if this action was.
@@ -161,7 +154,8 @@ class AnalysisCHMM(AgentInterface):
         self.actions_picked = pd.concat([self.actions_picked, new_row], ignore_index=True, axis=0)
 
         # Compute entropy of prior over actions.
-        sm = nn.Softmax(dim=1)(self.critic(state))
+        (_, _), quality = self.encoder(obs)
+        sm = nn.functional.softmax(quality, dim=1)
         e = entropy(sm[0].detach().cpu())
         new_row = pd.DataFrame({"Training iterations": [self.steps_done], "Entropy": [e]})
         self.entropy = pd.concat([self.entropy, new_row], ignore_index=True, axis=0)
@@ -311,19 +305,15 @@ class AnalysisCHMM(AgentInterface):
         :return: expected free energy loss
         """
 
-        # Compute required vectors.
-        mean_hat_t, log_var_hat_t = self.encoder(obs)
+        # Compute required vectors, including the G-values of each action in the current state.
+        (mean_hat_t, log_var_hat_t), critic_pred = self.encoder(obs)
         mean, log_var = self.transition(mean_hat_t, actions)
-        mean_hat, log_var_hat = self.encoder(next_obs)
-
-        # Compute the G-values of each action in the current state.
-        critic_pred = self.critic(mean_hat_t)
+        (mean_hat, log_var_hat), _ = self.encoder(next_obs)
         critic_pred = critic_pred.gather(dim=1, index=unsqueeze(actions.to(torch.int64), dim=1))
 
-        # For each batch entry where the simulation did not stop,
-        # compute the value of the next states.
+        # For each batch entry where the simulation did not stop, compute the value of the next states.
         future_gval = torch.zeros(config.task.batch_size, device=Device.get())
-        future_gval[torch.logical_not(done)] = self.target(mean_hat[torch.logical_not(done)]).max(1)[0]
+        future_gval[torch.logical_not(done)] = self.target(next_obs[torch.logical_not(done)])[1].max(1)[0]
 
         # Compute the information gain (if needed).
         percentage = self.info_gain_percentage / 100.0 if self.n_steps_info_gain_incr <= self.steps_done else 0.0
@@ -363,13 +353,13 @@ class AnalysisCHMM(AgentInterface):
         """
 
         # Compute required vectors.
-        mean_hat, log_var_hat = self.encoder(obs)
+        (mean_hat, log_var_hat), _ = self.encoder(obs)
         states = math_fc.reparameterize(mean_hat, log_var_hat)
         alpha = self.decoder(states)
         kl_div_hs_t0 = math_fc.kl_div_gaussian(mean_hat, log_var_hat)
         log_likelihood_t0 = math_fc.log_bernoulli_with_logits(obs, alpha)
 
-        mean_hat, log_var_hat = self.encoder(next_obs)
+        (mean_hat, log_var_hat), _ = self.encoder(next_obs)
         next_states = math_fc.reparameterize(mean_hat, log_var_hat)
         mean, log_var = self.transition(states, actions)
         next_alpha = self.decoder(next_states)
@@ -387,7 +377,7 @@ class AnalysisCHMM(AgentInterface):
             # Log the mean, min and max values of weights, if requested by user.
             if self.verbose and self.steps_done % min(config.tensorboard.log_interval * 10, 500) == 0:
 
-                for neural_network in [self.encoder, self.decoder, self.transition, self.critic, self.target]:
+                for neural_network in [self.encoder, self.decoder, self.transition, self.target]:
                     for name, param in neural_network.named_parameters():
                         self.writer.add_scalar(f"{name}.mean", param.mean(), self.steps_done)
                         self.writer.add_scalar(f"{name}.min", param.min(), self.steps_done)
@@ -409,9 +399,8 @@ class AnalysisCHMM(AgentInterface):
         :return: the outputs of the encoder, transition, and critic model
         """
         obs, actions = data
-        mean_hat_t, log_var_hat_t = self.encoder(obs)
+        (mean_hat_t, log_var_hat_t), critic_prediction = self.encoder(obs)
         transition_prediction = self.transition(mean_hat_t, actions)
-        critic_prediction = self.critic(mean_hat_t)
         return (mean_hat_t, log_var_hat_t), transition_prediction, critic_prediction
 
     def synchronize_target(self):
@@ -419,12 +408,13 @@ class AnalysisCHMM(AgentInterface):
         Synchronize the target with the critic.
         :return: nothing.
         """
-        self.target = copy.deepcopy(self.critic)
+        self.target = copy.deepcopy(self.encoder)
         self.target.eval()
 
     def save(self, env, config, final_model=False):
         """
         Create a checkpoint file allowing the agent to be reloaded later
+        :param env: the gym environment
         :param config: the hydra configuration
         :param final_model: True if the model being saved is the final version, False otherwise
         :return: nothing
@@ -455,9 +445,6 @@ class AnalysisCHMM(AgentInterface):
             "transition_net_state_dict": self.transition.state_dict(),
             "transition_net_module": str(self.transition.__module__),
             "transition_net_class": str(self.transition.__class__.__name__),
-            "critic_net_state_dict": self.critic.state_dict(),
-            "critic_net_module": str(self.critic.__module__),
-            "critic_net_class": str(self.critic.__class__.__name__),
             "n_steps_info_gain_incr": self.n_steps_info_gain_incr,
             "info_gain_percentage": self.info_gain_percentage,
             "steps_done": self.steps_done,
@@ -473,7 +460,6 @@ class AnalysisCHMM(AgentInterface):
             "queue_capacity": self.queue_capacity,
             "n_steps_between_synchro": self.n_steps_between_synchro,
             "action_selection": dict(self.action_selection),
-            "efe_loss_update_encoder": self.efe_loss_update_encoder,
             "inhibition_of_return": self.inhibition_of_return
         }, checkpoint_file)
 
@@ -519,7 +505,6 @@ class AnalysisCHMM(AgentInterface):
             "encoder": Checkpoint.load_encoder(checkpoint, training_mode),
             "decoder": Checkpoint.load_decoder(checkpoint, training_mode),
             "transition": Checkpoint.load_transition(checkpoint, training_mode),
-            "critic": Checkpoint.load_critic(checkpoint, training_mode),
             "image_shape": checkpoint["image_shape"],
             "vfe_lr": checkpoint["vfe_lr"],
             "efe_lr": checkpoint["efe_lr"],
@@ -537,7 +522,6 @@ class AnalysisCHMM(AgentInterface):
             "steps_done": checkpoint["steps_done"],
             "n_actions": checkpoint["n_actions"],
             "n_states": checkpoint["n_states"],
-            "efe_loss_update_encoder": checkpoint["efe_loss_update_encoder"],
             "inhibition_of_return": checkpoint["inhibition_of_return"]
         }
 
@@ -571,7 +555,7 @@ class AnalysisCHMM(AgentInterface):
 
             # Retrieve the initial ground truth and reconstructed images.
             obs = env.reset()
-            state, _ = self.encoder(torch.unsqueeze(obs, dim=0))
+            (state, _), _ = self.encoder(torch.unsqueeze(obs, dim=0))
             reconstructed_obs = self.decoder(state)
 
             # Iterate over the grid's columns.

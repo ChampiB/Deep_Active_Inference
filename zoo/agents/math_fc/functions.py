@@ -16,15 +16,15 @@ def entropy_gaussian(log_var, sum_dims=None):
     return log_var.size()[1] * 0.5 * ln2pie + 0.5 * log_var.sum(sum_dims)
 
 
-def kl_div_categorical(pi_hat, pi):
+def kl_div_categorical(pi_hat, pi, epsilon=10e-5):
     """
     Compute the KL-divergence between two categorical distribution.
     :param pi_hat: the parameters of the first categorical distribution.
     :param pi: the parameters of the second categorical distribution.
+    :param epsilon: a small value added to the probabilities to avoid taking the logarithm of zero
     :return: the KL-divergence.
     """
-    shift = 0.00001
-    kl = pi_hat * ((pi_hat + shift).log() - (pi + shift).log())
+    kl = pi_hat * ((pi_hat + epsilon).log() - (pi + epsilon).log())
     return kl.sum()
 
 
@@ -100,9 +100,9 @@ def compute_info_gain(g_value, mean, log_var, mean_hat, log_var_hat):
     if g_value == "efe":
         info_gain = kl_div_gaussian(mean_hat, log_var_hat, mean, log_var)
     if g_value == "entropy_posterior":
-        info_gain = - entropy_gaussian(log_var_hat, mean_hat)
+        info_gain = - entropy_gaussian(log_var_hat)
     if g_value == "entropy_prior":
-        info_gain = - entropy_gaussian(log_var, mean)
+        info_gain = - entropy_gaussian(log_var)
     if g_value == "entropy":
-        info_gain = - entropy_gaussian(log_var, mean) - entropy_gaussian(log_var_hat, mean_hat)
+        info_gain = - entropy_gaussian(log_var) - entropy_gaussian(log_var_hat)
     return info_gain

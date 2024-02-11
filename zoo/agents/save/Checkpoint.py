@@ -205,11 +205,12 @@ class Checkpoint:
         # Load number of states and the image shape.
         image_shape = checkpoint["image_shape"]
         n_states = checkpoint["n_states"]
+        n_actions = checkpoint["n_actions"] if "n_actions" in checkpoint else -1
 
         # Load encoder network.
         encoder_module = importlib.import_module(checkpoint["encoder_net_module"])
         encoder_class = getattr(encoder_module, checkpoint["encoder_net_class"])
-        encoder = encoder_class(n_states=n_states, image_shape=image_shape)
+        encoder = encoder_class(n_states=n_states, image_shape=image_shape, n_actions=n_actions)
         encoder.load_state_dict(checkpoint["encoder_net_state_dict"])
 
         # Set the training mode of the encoder.
