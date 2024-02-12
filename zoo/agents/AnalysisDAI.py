@@ -1,4 +1,5 @@
 import imageio
+from torch.nn.functional import mse_loss
 from os.path import join
 from zoo.agents.AgentInterface import AgentInterface
 from zoo.helpers.MatPlotLib import MatPlotLib
@@ -340,12 +341,13 @@ class AnalysisDAI(AgentInterface):
         next_alpha = self.decoder(next_states)
 
         # Compute the EFE of each action given the current observation (as predicted by the target).
-        efe = self.compute_efe(config, next_obs, done, rewards, mean, log_var, mean_hat, log_var_hat)
-        efe = nn.functional.softmax(efe, dim=1)
+        efe_target = self.compute_efe(config, next_obs, done, rewards, mean, log_var, mean_hat, log_var_hat)
+        efe_target = torch.squeeze(efe_target)
 
         # Compute the EFE of each action given the current observation (as predicted by the critic).
-        critic_prediction = self.critic(obs).gather(dim=1, index=unsqueeze(actions.to(torch.int64), dim=1))
-        critic_prediction = nn.functional.softmax(critic_prediction, dim=1)
+        efe_critic = self.critic(obs)
+        efe_critic = efe_critic.gather(dim=1, index=unsqueeze(actions.to(torch.int64), dim=1))
+        efe_critic = torch.squeeze(efe_critic)
 
         # Compute the variational free energy.
         kl_div_hs_t0 = math_fc.kl_div_gaussian(mean_hat_t, log_var_hat_t)
@@ -354,10 +356,10 @@ class AnalysisDAI(AgentInterface):
         kl_div_hs_t1 = math_fc.kl_div_gaussian(mean_hat, log_var_hat, mean, log_var)
         log_likelihood_t1 = math_fc.log_bernoulli_with_logits(next_obs, next_alpha)
 
-        kl_div_a = math_fc.kl_div_categorical(critic_prediction, efe)
+        kl_div_g = mse_loss(efe_critic, efe_target, reduction="sum")
 
-        vfe_loss = kl_div_hs_t1 - log_likelihood_t1 + kl_div_hs_t0 - log_likelihood_t0 + kl_div_a
-        if torch.isnan(vfe_loss) or torch.isinf(vfe_loss) or vfe_loss > 1e5:
+        vfe_loss = kl_div_hs_t1 - log_likelihood_t1 + kl_div_hs_t0 - log_likelihood_t0 + kl_div_g
+        if torch.isnan(vfe_loss) or torch.isinf(vfe_loss) or vfe_loss > 1e10:
             return None
 
         # Display debug information, if needed.
@@ -373,7 +375,7 @@ class AnalysisDAI(AgentInterface):
                         self.writer.add_scalar(f"{name}.max", param.min(), self.steps_done)
 
             # Log the KL-divergence, the negative log likelihood, beta and the variational free energy.
-            self.writer.add_scalar("kl_div_a", kl_div_a, self.steps_done)
+            self.writer.add_scalar("kl_div_g", kl_div_g, self.steps_done)
             self.writer.add_scalar("kl_div_hs_t", kl_div_hs_t0, self.steps_done)
             self.writer.add_scalar("neg_log_likelihood_t", - log_likelihood_t0, self.steps_done)
             self.writer.add_scalar("kl_div_hs_t+1", kl_div_hs_t1, self.steps_done)

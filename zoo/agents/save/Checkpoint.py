@@ -255,8 +255,9 @@ class Checkpoint:
         # Load critic network.
         critic_module = importlib.import_module(checkpoint[network_key + "_module"])
         critic_class = getattr(critic_module, checkpoint[network_key + "_class"])
+        image_shape = checkpoint["image_shape"] if "image_shape" in checkpoint else None
         critic = critic_class(
-            n_states=checkpoint[n_states_key], n_actions=checkpoint["n_actions"]
+            n_states=checkpoint[n_states_key], n_actions=checkpoint["n_actions"], image_shape=image_shape
         )
         critic.load_state_dict(checkpoint[network_key + "_state_dict"])
 

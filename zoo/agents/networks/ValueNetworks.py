@@ -7,7 +7,7 @@ from math import prod
 #
 class Convolutional64(nn.Module):
 
-    def __init__(self, image_shape, n_actions):
+    def __init__(self, image_shape, n_actions, **_):
         """
         Constructor.
         :param image_shape: the shape of the input images.
@@ -71,7 +71,7 @@ class Convolutional64(nn.Module):
 #
 class DualLinearRelu4x100(nn.Module):
 
-    def __init__(self, n_states, n_actions):
+    def __init__(self, n_states, n_actions, **_):
         """
         Constructor.
         :param n_states: the number of components of the Gaussian over latent variables.
@@ -105,7 +105,7 @@ class DualLinearRelu4x100(nn.Module):
 #
 class LinearRelu4x100(nn.Module):
 
-    def __init__(self, n_states, n_actions):
+    def __init__(self, n_states, n_actions, **_):
         """
         Constructor.
         :param n_states: the number of components of the Gaussian over latent variables.
@@ -139,7 +139,7 @@ class LinearRelu4x100(nn.Module):
 #
 class LinearRelu4x256(nn.Module):
 
-    def __init__(self, n_states, n_actions):
+    def __init__(self, n_states, n_actions, **_):
         """
         Constructor.
         :param n_states: the number of components of the Gaussian over latent variables.
@@ -173,7 +173,7 @@ class LinearRelu4x256(nn.Module):
 #
 class LinearReluDropout4x100(nn.Module):
 
-    def __init__(self, n_states, n_actions):
+    def __init__(self, n_states, n_actions, **_):
         """
         Constructor.
         :param n_states: the number of components of the Gaussian over latent variables.
@@ -210,7 +210,7 @@ class LinearReluDropout4x100(nn.Module):
 #
 class LinearRelu3x128(nn.Module):
 
-    def __init__(self, n_states, n_actions):
+    def __init__(self, n_states, n_actions, **_):
         """
         Constructor.
         :param n_states: the number of components of the Gaussian over latent variables.

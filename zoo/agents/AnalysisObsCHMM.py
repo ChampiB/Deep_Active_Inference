@@ -1,5 +1,8 @@
 import imageio
 from os.path import join
+
+import numpy
+
 from zoo.agents.AgentInterface import AgentInterface
 from zoo.helpers.MatPlotLib import MatPlotLib
 import matplotlib.pyplot as plt
@@ -85,6 +88,7 @@ class AnalysisObsCHMM(AgentInterface):
         self.info_gain_percentage = info_gain_percentage
 
         # Miscellaneous.
+        self.env_name = None
         self.agent_name = name
         self.total_rewards = 0.0
         self.n_steps_between_synchro = n_steps_between_synchro
@@ -153,7 +157,7 @@ class AnalysisObsCHMM(AgentInterface):
         self.last_action = action
 
         # Save action taken.
-        action_name = ["Down", "Up", "Left", "Right"][action]
+        action_name = ["Down", "Up", "Left", "Right"][action] if self.env_name == "d_sprites" else str(action)
         new_row = pd.DataFrame({"Training iterations": [self.steps_done], "Actions": [action_name]})
         self.actions_picked = pd.concat([self.actions_picked, new_row], ignore_index=True, axis=0)
 
@@ -185,6 +189,9 @@ class AnalysisObsCHMM(AgentInterface):
         :param config: the hydra configuration
         :return: nothing
         """
+
+        # Storing the environment name.
+        self.env_name = config.environment.name
 
         # Retrieve the initial observation from the environment.
         obs = env.reset()
@@ -434,7 +441,7 @@ class AnalysisObsCHMM(AgentInterface):
 
         # Create a GIF showing the actions taken by the agent.
         gif_file = join(self.checkpoint_dir, f"actions_taken_by_model_{model_id}.gif")
-        self.create_actions_gif(env, gif_file)
+        self.create_actions_gif(config, env, gif_file)
 
         # Save the model.
         torch.save({
@@ -474,11 +481,11 @@ class AnalysisObsCHMM(AgentInterface):
             "inhibition_of_return": self.inhibition_of_return
         }, checkpoint_file)
 
-    def create_actions_gif(self, env, gif_file, n_steps=500):
+    def create_actions_gif(self, config, env, gif_file, n_steps=500):
 
         # Retrieve the initial observation from the environment.
         obs = env.reset()
-        images = [obs.cpu().numpy()]
+        images = [(obs.cpu().numpy() * 255).astype(numpy.uint8)]
 
         # Train the agent.
         steps_done = 0
@@ -489,12 +496,14 @@ class AnalysisObsCHMM(AgentInterface):
 
             # Execute the action in the environment.
             obs, reward, done, info = env.step(action)
-            images.append(obs.cpu().numpy())
+            image = (obs.cpu().numpy() * 255).astype(numpy.uint8)
+            images.append(image)
 
             # Reset the environment when a trial ends.
             if done:
                 obs = env.reset()
-                images.append(obs.cpu().numpy())
+                image = (obs.cpu().numpy() * 255).astype(numpy.uint8)
+                images.append(image)
 
             # Increase the number of steps done so far.
             steps_done += 1

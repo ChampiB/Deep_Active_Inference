@@ -7,7 +7,7 @@ defaults:
   - critic: convolutional_64
   - action_selection: epsilon_greedy
 
-_target_: zoo.agents.AnalysisObsCHMM.AnalysisObsCHMM
+_target_: zoo.agents.AnalysisDAI.AnalysisDAI
 
 # Miscellaneous
 n_actions: ${environment.n_actions}

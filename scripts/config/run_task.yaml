@@ -1,7 +1,7 @@
 # Define the agent, environment and task
 defaults:
-  - environment: d_sprites
-  - agent: dai_analysis
+  - environment: asterix
+  - agent: obs_chmm_analysis
   - task: training
   - _self_
 

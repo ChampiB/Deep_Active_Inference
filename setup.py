@@ -14,6 +14,7 @@ setup(
     include_package_data=True,
     install_requires=[
         "gym>=0.21.0",
+        "scikit-image",
         "numpy==1.23.4",
         "omegaconf==2.3.0",
         "torchvision==0.15.1",

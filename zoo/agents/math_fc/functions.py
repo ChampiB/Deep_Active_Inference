@@ -28,6 +28,17 @@ def kl_div_categorical(pi_hat, pi, epsilon=10e-5):
     return kl.sum()
 
 
+def kl_div_categorical_with_logits(log_pi_hat, log_pi):
+    """
+    Compute the KL-divergence between two categorical distribution.
+    :param log_pi_hat: the logarithm of the parameters of the first categorical distribution.
+    :param log_pi: the logarithm of the parameters of the second categorical distribution.
+    :return: the KL-divergence.
+    """
+    kl = torch.softmax(log_pi_hat, dim=1) * (log_pi_hat - log_pi)
+    return kl.sum()
+
+
 def kl_div_gaussian(mean_hat, log_var_hat, mean=None, log_var=None, sum_dims=None, min_var=10e-4):
     """
     Compute the KL-divergence between two Gaussian distributions
